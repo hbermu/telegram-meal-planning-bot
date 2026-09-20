@@ -23,6 +23,7 @@
 6. The catalogue-mutating commands shall be rejected outside a private chat, with a reply telling the user to continue in private.
 7. The bot shall send scheduled messages only to `MEALBOT_GROUP_CHAT_ID`.
 8. The bot shall never echo the allow-list, the group chat ID, or the bot token into any message or log line.
+8b. The entry point shall raise the `httpx`, `httpcore` and `apscheduler` loggers to WARNING. Requirement 8 is not satisfied by careful logging of our own: `httpx` logs every request URL at INFO and the Telegram Bot API carries the token in the path, so an unmuzzled dependency prints the token on every poll into whatever collects the container's logs.
 
 ## Commands
 
@@ -32,7 +33,7 @@
 
 ## Tests covering this
 
-- `tests/test_access.py` — a non-allow-listed ID produces no reply; an allow-listed ID in an unknown chat produces no reply; `/myid` answers for anyone in private; a private-only command rejected in the group returns the redirect message
+- `tests/test_access.py` — a third-party logger cannot print the token after `_configure_logging` runs; a non-allow-listed ID produces no reply; an allow-listed ID in an unknown chat produces no reply; `/myid` answers for anyone in private; a private-only command rejected in the group returns the redirect message
 
 ## Non-goals
 

@@ -163,8 +163,16 @@ async def _post_catch_up(app: Application, conn: Connection, config: Config, tod
             await scheduler.post_plan_and_shopping(app.bot, config, conn, plan)
 
 
+# httpx logs every request at INFO including the full URL, and the Telegram Bot API
+# puts the token in the path -- so INFO-level httpx prints the token on every poll,
+# forever, into whatever collects the container's logs. apscheduler is merely noisy.
+_MUZZLED_LOGGERS = ("httpx", "httpcore", "apscheduler")
+
+
 def _configure_logging(config: Config) -> None:
     logging.basicConfig(level=config.log_level)
+    for name in _MUZZLED_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def main() -> None:

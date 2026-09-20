@@ -138,3 +138,20 @@ def test_no_log_record_ever_carries_the_token_allow_list_or_group_id(
         assert TOKEN not in message
         assert str(CONFIG.group_chat_id) not in message
         assert repr(CONFIG.allowed_user_ids) not in message
+
+
+def test_third_party_loggers_cannot_print_the_token(caplog: pytest.LogCaptureFixture) -> None:
+    """httpx logs every request URL at INFO, and the Telegram API carries the token
+    in the path. Our own logging is careful; a dependency's is not, so the entry
+    point has to silence it or the token lands in the container logs on every poll."""
+    from meal_planning_bot.__main__ import _MUZZLED_LOGGERS, _configure_logging
+
+    assert "httpx" in _MUZZLED_LOGGERS
+
+    _configure_logging(CONFIG)
+    with caplog.at_level(logging.DEBUG):
+        logging.getLogger("httpx").info(
+            "HTTP Request: POST https://api.telegram.org/bot%s/getMe", CONFIG.token
+        )
+
+    assert CONFIG.token not in caplog.text
