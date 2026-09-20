@@ -1,0 +1,201 @@
+{
+  "planPath": "docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Project scaffolding",
+      "status": "completed",
+      "description": "**Goal:** A working virtualenv, lint/type/test tooling, an importable empty package, and a CI job that runs all three.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 1: Project scaffolding` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"pyproject.toml\", \"requirements.txt\", \"requirements-dev.txt\", \"meal_planning_bot/__init__.py\", \"tests/__init__.py\", \"tests/test_smoke.py\", \".github/workflows/ci.yml\"], \"verifyCommand\": \".venv/bin/ruff check . && .venv/bin/mypy --strict meal_planning_bot && .venv/bin/pytest -q\", \"acceptanceCriteria\": [\"`.venv/bin/pytest` collects and passes one smoke test\", \"`.venv/bin/mypy --strict meal_planning_bot` passes on the empty package\", \"`.venv/bin/ruff check .` passes\", \"The CI workflow runs ruff, mypy and pytest on push and pull request\"], \"requiresUserVerification\": false}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Configuration from the environment",
+      "status": "completed",
+      "description": "**Goal:** A frozen `Config` dataclass built from environment variables that aborts startup with a clear message on anything missing or malformed.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 2: Configuration from the environment` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/config.py\", \"tests/test_config.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_config.py -v\", \"acceptanceCriteria\": [\"`TELEGRAM_BOT_TOKEN`, `MEALBOT_ALLOWED_USER_IDS`, `MEALBOT_GROUP_CHAT_ID` are required; a missing one raises `ConfigError` naming the variable\", \"`MEALBOT_ALLOWED_USER_IDS` parses to a `frozenset[int]`; empty or non-integer raises\", \"`MEALBOT_DB_PATH` defaults to `/data/mealbot.db`, `MEALBOT_TIMEZONE` to `UTC`, `MEALBOT_LOG_LEVEL` to `INFO`\", \"An unknown timezone raises `ConfigError`\", \"`repr(Config)` never contains the token\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        1
+      ]
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Models, database and migrations",
+      "status": "completed",
+      "description": "**Goal:** The dataclasses every module passes around, a connection factory with the required PRAGMAs, and migration 1 creating the whole schema with its CHECK constraints and settings seed.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 3: Models, database and migrations` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/models.py\", \"meal_planning_bot/db.py\", \"meal_planning_bot/migrations.py\", \"tests/test_migrations.py\", \"tests/conftest.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_migrations.py -v\", \"acceptanceCriteria\": [\"A fresh file reaches `user_version = 1`; re-opening applies nothing\", \"`journal_mode = WAL`, `foreign_keys = ON`, `busy_timeout = 5000` on every connection\", \"A `user_version` above the highest known migration aborts with `MigrationError`\", \"A raising migration rolls back and leaves `user_version` at the previous value\", \"Every CHECK constraint in `schema.md` rejects an out-of-range value\", \"Both `lower(name)` unique indexes reject a case-variant duplicate\", \"The `settings` seed contains exactly the ten keys in `settings.md`, with the documented defaults\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        1
+      ]
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Calories and weeks \u2014 the pure helpers",
+      "status": "completed",
+      "description": "**Goal:** Two small pure modules \u2014 calorie resolution from ingredients, and week arithmetic \u2014 plus the curated seed file of common ingredients so the household does not have to look calorie densities up.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 4: Calories and weeks \u2014 the pure helpers` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/nutrition.py\", \"meal_planning_bot/weeks.py\", \"meal_planning_bot/data/kcal_seed.json\", \"tests/test_nutrition.py\", \"tests/test_weeks.py\", \"scripts/build_kcal_seed.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_nutrition.py tests/test_weeks.py -v\", \"acceptanceCriteria\": [\"`computed_kcal` sums `quantity / REFERENCE_QUANTITY[unit] * kcal_ref` and rounds to a whole calorie\", \"A `unit`-based food (an egg at 78 kcal each, quantity 2) contributes 156, not 1.56\", \"`effective_kcal` returns the override when set and the computed value when not\", \"The seed lookup matches on the lower-cased name exactly and returns `None` otherwise \\u2014 no fuzzy matching\", \"Every seed entry has a valid `Unit`, a valid `Category`, and a `kcal_ref` between 0 and 900\", \"Ten hand-checked anchors match the seed within \\u00b15 kcal (`aceite de oliva` 884, `arroz` 360, `pollo` 165, `huevo` 78 per unit, and six more chosen when the seed is built)\", \"`current_week_start`, `next_week_start` and `resolve_week` handle a Monday, a Friday and a Sunday correctly\", \"`resolve_week` maps the argument `siguiente` to next Monday and its absence to the current week\", \"Neither module imports `sqlite3`, `telegram`, or reads the clock \\u2014 the date is always a parameter\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        3
+      ]
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Repository \u2014 foods and dishes",
+      "status": "completed",
+      "description": "**Goal:** Every catalogue read and write, with case-insensitive names, soft deletion, and the referential guards the spec requires.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 5: Repository \u2014 foods and dishes` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/repo.py\", \"tests/test_repo.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_repo.py -v\", \"acceptanceCriteria\": [\"`create_food` stores `kcal_ref`, rejects a case-variant duplicate, and preserves the typed capitalisation\", \"`deactivate_food` is refused with the referencing dish names while any dish uses it\", \"`update_food` changing the unit leaves `dish_ingredients.quantity` untouched and requires a new `kcal_ref`\", \"`create_dish` rejects an empty ingredient list, a duplicated food, and a case-variant duplicate name, all in one transaction that leaves nothing behind on failure\", \"`deactivate_dish` sets `active = 0`, keeps ingredients and plan entries, and returns the affected slots of the current **and next** week, relative to the `today` it is given \\u2014 it must not read the clock, or its behaviour cannot be tested at a fixed date\", \"`reactivate_dish` and `reactivate_food` set `active = 1`; `list_dishes(archived=True)` and `list_foods(archived=True)` return the inactive rows\", \"Every `Dish` returned by the repository has its `kcal` already resolved through `nutrition.effective_kcal`, so no caller ever sees an unresolved dish\", \"`list_dishes` and `list_foods` return active rows only; `count_dishes_by_meal_type` returns a count per `MealType`\", \"No module other than `repo.py` imports `sqlite3` \\u2014 asserted by a test that greps the package\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        4
+      ]
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Repository \u2014 plans, history and settings",
+      "status": "completed",
+      "description": "**Goal:** Persist a plan idempotently per week, read back the served history the planner needs, and read and write settings with validation.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 6: Repository \u2014 plans, history and settings` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/repo.py\", \"tests/test_settings.py\", \"tests/test_repo.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_repo.py tests/test_settings.py -v\", \"acceptanceCriteria\": [\"`save_plan` for a `week_start` that already has a plan replaces its entries and keeps one `plans` row\", \"`get_plan(week_start)` returns `None` when absent, and a `Plan` with 25 entries when present\", \"`scheduled_history(around, days)` returns `ServedRecord`s from stored plans, mapping day 0\\u20134 onto real dates\", \"`set_setting` validates against the per-key type and range table and raises `SettingError` otherwise\", \"`all_settings()` returns every seeded key with its current value and its default\", \"`scheduled_history(around, days)` returns entries from **every** stored plan within the window, including a future week's, so next week's draw sees this week's dishes\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        4
+      ]
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Planner \u2014 constraints and the solver",
+      "status": "completed",
+      "description": "**Goal:** A pure backtracking solver that fills 25 slots under every hard constraint, deterministic under a seed, bounded by a node cap.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 7: Planner \u2014 constraints and the solver` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/planner.py\", \"tests/test_planner.py\", \"tests/factories.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_planner.py -v\", \"acceptanceCriteria\": [\"`solve()` fills all 25 day/slot pairs from the matching meal type\", \"The same seed and catalogue produce an identical plan; different seeds produce different plans on a catalogue with slack\", \"No day's kcal falls outside target \\u00b1 tolerance\", \"No food appears in more than `max_food_repeats_per_day` dishes on one day\", \"No dish appears twice on one day, snack slots included\", \"A dish served last Wednesday with a 14-day cooldown never appears this week; Friday-to-Monday counts as three days\", \"A catalogue whose only solution requires backtracking is still solved\", \"The node cap of 50 000 ends a hopeless search instead of hanging\", \"`planner.py` imports neither `sqlite3`, nor `telegram`, nor `datetime.now` \\u2014 asserted by a test\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        3
+      ]
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Planner \u2014 relaxation ladder and failure diagnosis",
+      "status": "completed",
+      "description": "**Goal:** When the catalogue cannot satisfy the rules, loosen them in a fixed five-step order, report which step won, and when all fail, say exactly what is missing.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 8: Planner \u2014 relaxation ladder and failure diagnosis` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/planner.py\", \"tests/test_planner.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_planner.py -v\", \"acceptanceCriteria\": [\"`plan_week()` tries steps 0\\u20134 in order and returns at the first success, with `Plan.relaxation` set to that index\", \"Step 1 halves every cooldown with a floor of 1; step 2 sets them all to 1; step 3 raises `max_food_repeats_per_day` by one; step 4 doubles `kcal_tolerance_pct`\", \"The meal-type rule and the once-per-day rule still hold at step 4\", \"A catalogue engineered to fail step N-1 and pass step N reports exactly N, for every N\", \"Total failure returns a `PlannerFailure` naming each short meal type with its count and requirement, and stating whether the calorie window is reachable at all\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        7
+      ]
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Planner invariants under fuzzing, and a realistic catalogue",
+      "status": "completed",
+      "description": "**Goal:** Prove the solver's guarantees hold across hundreds of generated catalogues and seeds \u2014 not only the handful of cases someone thought to write \u2014 and prove a real-sized catalogue keeps solving at relaxation 0 week after week.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 9: Planner invariants under fuzzing, and a realistic catalogue` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"tests/test_planner_invariants.py\", \"tests/fixtures/__init__.py\", \"tests/fixtures/realistic_catalogue.py\", \"tests/factories.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_planner_invariants.py -v --durations=5\", \"acceptanceCriteria\": [\"`assert_plan_valid()` derives the *effective* settings from `plan.relaxation` by calling `planner._ladder`, so the checker can never drift from the ladder it is checking\", \"The generators are mean enough that the sweep actually covers the solver: a dedicated test asserts that across the 200 seeds at least one case fails outright, at least one is solved at a relaxation above 0, and at least a quarter are solved at all. Without this guard a generous generator leaves every case at relaxation 0 and the suite is green while exercising one code path\", \"A second guard asserts that at least a quarter of the tiny catalogues genuinely fail, so the brute-force soundness check below actually runs instead of passing by never entering its body\", \"Both sweeps share the solver results with the per-seed tests through a cache, so no catalogue is solved twice\", \"Over 200 generated (catalogue, seed) pairs, every returned plan satisfies all six invariants: 25 slots filled, slot meal type matches, no dish twice in a day, food repeats within the effective limit, each day's kcal inside the effective window, every cooldown respected against both history and the plan under construction\", \"**Soundness:** on small catalogues (3 dishes per meal type, 4 with two snack slots) a brute-force enumeration confirms that every `PlannerFailure` is genuine \\u2014 no valid plan existed\", \"A realistic catalogue (12 breakfasts, 20 snacks, 18 lunches, 18 dinners, plausible kcal) solves at relaxation 0 for 50 consecutive weeks, with each week's result fed back as history\", \"Across those 50 weeks, no dish is served more often than the catalogue size allows, and the lunch cooldown never forces a relaxation\", \"The 50-week run completes in under 5 seconds on CI\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        8
+      ]
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Shopping list aggregation",
+      "status": "completed",
+      "description": "**Goal:** A pure function turning a week's dishes into per-food totals grouped by category, with the documented rounding.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 10: Shopping list aggregation` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/shopping.py\", \"tests/test_shopping.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_shopping.py -v\", \"acceptanceCriteria\": [\"A food used by three dishes sums across all three; a dish drawn on two days counts twice\", \"Categories come out in `CATEGORY_ORDER`; foods inside a category sort case-insensitively by name\", \"`g` and `ml` round to a whole number; `unit` rounds to one decimal and drops a trailing `.0`\", \"Categories with no foods are omitted\", \"Calling twice with the same input returns equal results and mutates nothing\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        3
+      ]
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: Spanish message formatting",
+      "status": "completed",
+      "description": "**Goal:** Every user-visible string, in one module, rendering the plan, the day, the shopping list, dish cards, help, errors, and the relaxation notice.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 11: Spanish message formatting` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/formatting.py\", \"tests/test_formatting.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_formatting.py -v\", \"acceptanceCriteria\": [\"`render_plan` shows five days, each with its five slots, dish names, kcal, and the day's total\", \"`render_day` shows one day's five slots\", \"`render_shopping` groups by category and splits at a category boundary when over 4 000 characters, returning a list of messages\", \"`render_dish` shows meal type, kcal, ingredients with quantity and unit, and steps when present\", \"`render_dishes_page` paginates at twenty and reports the page number\", \"`render_relaxation_notice` returns text only when the step is above zero\", \"`render_help` lists every command registered in `COMMANDS`\", \"No other module under `meal_planning_bot/` contains a non-ASCII string literal \\u2014 asserted by a test\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        4,
+        8,
+        10
+      ]
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: Access control",
+      "status": "completed",
+      "description": "**Goal:** Decorators that drop every update from a non-allow-listed user or an unknown chat without replying, and restrict the mutating commands to private chats.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 12: Access control` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/access.py\", \"tests/test_access.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_access.py -v\", \"acceptanceCriteria\": [\"An update from a user ID outside the allow-list produces no reply and logs the ID at INFO\", \"An allow-listed user in a chat that is neither the configured group nor a private chat produces no reply\", \"`/myid` bypasses the allow-list in a private chat only\", \"A `private_only` handler called from the group replies with the redirect message and does not run\", \"Neither the token, the allow-list, nor the group chat ID appears in any log record \\u2014 asserted with `caplog`\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        2
+      ]
+    },
+    {
+      "id": 13,
+      "subject": "Task 13: Consultation handlers",
+      "status": "completed",
+      "description": "**Goal:** `/start`, `/help`, `/myid`, `/plan`, `/today`, `/shopping`, with the documented behaviour when no plan exists and on a weekend.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 13: Consultation handlers` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/handlers/__init__.py\", \"meal_planning_bot/handlers/help.py\", \"meal_planning_bot/handlers/plan.py\", \"tests/test_handlers.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_handlers.py -v\", \"acceptanceCriteria\": [\"`/plan` with no plan for the current week replies with the \\\"no plan\\\" text suggesting `/regenerate`\", \"`/today` on a Saturday or Sunday replies that the weekend is not planned\", \"`/shopping` renders the aggregated list for the stored plan and splits into several messages when long\", \"`/help` and an unknown command both return the help text\", \"The current date is injected, not read from the clock, so the weekend test needs no freezing library\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        6,
+        11,
+        12
+      ]
+    },
+    {
+      "id": 14,
+      "subject": "Task 14: Plan-changing handlers",
+      "status": "completed",
+      "description": "**Goal:** `/regenerate` and `/swap`, including Spanish and numeric argument parsing, the optional `siguiente` week, and the \"no valid candidate\" path.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 14: Plan-changing handlers` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/handlers/plan.py\", \"tests/test_handlers.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_handlers.py -v\", \"acceptanceCriteria\": [\"`/regenerate` replaces the week's entries and replies with the plan plus the relaxation notice when the step is above zero\", \"`/swap lunes cena` and `/swap 1 cena` both resolve to day 0, slot `dinner`, current week\", \"`/swap lunes cena siguiente` resolves to next Monday's week\", \"`/regenerate siguiente` draws next week and leaves the current week's plan untouched\", \"Unparseable arguments reply with the accepted forms and change nothing\", \"A slot with no valid candidate replies as such and leaves the existing assignment\", \"Neither command posts to the group when called from a private chat\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        8,
+        13
+      ]
+    },
+    {
+      "id": 15,
+      "subject": "Task 15: Catalogue browsing handlers",
+      "status": "completed",
+      "description": "**Goal:** `/dishes`, `/dish`, `/foods`, their `archivados` variants, and `/restore`, with pagination and the fuzzy-match fallback.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 15: Catalogue browsing handlers` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/handlers/catalog.py\", \"tests/test_handlers.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_handlers.py -v\", \"acceptanceCriteria\": [\"`/dishes` paginates at twenty with working next and previous inline buttons\", \"`/dish <exact name>` returns the full card\", \"`/dish <partial>` returns up to five inline buttons, and tapping one returns that card\", \"`/dish <no match>` says so\", \"`/foods` groups by category in `CATEGORY_ORDER`, showing each food's unit and `kcal_ref`\", \"`/dishes archivados` and `/foods archivados` list the inactive rows with the same pagination\", \"`/restore <name>` reactivates an archived dish or food, offers buttons when the name matches more than one, and says so when it matches none\", \"`/dish` shows whether the calories are computed or overridden\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        5,
+        13
+      ]
+    },
+    {
+      "id": 16,
+      "subject": "Task 16: Catalogue wizards",
+      "status": "completed",
+      "description": "**Goal:** The six conversation flows that create and edit dishes and foods, writing nothing until the final confirmation.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 16: Catalogue wizards` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/handlers/wizards.py\", \"tests/test_wizards.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_wizards.py -v\", \"acceptanceCriteria\": [\"`/newdish` walks name \\u2192 meal type \\u2192 ingredients \\u2192 steps \\u2192 calories \\u2192 summary \\u2192 confirm, and writes only on confirm\", \"The calorie step shows the value computed from the ingredients, with an `Accept` button storing no override and a typed number storing one\", \"An unknown food name during ingredient collection offers inline creation (unit, category, `kcal_ref`), pre-filled from the seed when the lower-cased name matches an entry exactly, and then continues\", \"An ambiguous food name offers up to five buttons instead of guessing\", \"A non-positive or non-numeric quantity re-asks the same step\", \"`/cancel` and `Discard` both leave the database untouched\", \"Starting a second wizard replaces the first with a notice\", \"The confirmation write is one transaction: a forced failure leaves neither the dish nor the inline-created food\", \"`/editdish` changes exactly one field; `/deletedish` and `/deletefood` require explicit confirmation\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        15
+      ]
+    },
+    {
+      "id": 17,
+      "subject": "Task 17: Settings handlers",
+      "status": "completed",
+      "description": "**Goal:** `/settings` and `/set`, validating against `SETTING_SPECS` and confirming with the old and new values.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 17: Settings handlers` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/handlers/settings.py\", \"tests/test_settings.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_settings.py -v\", \"acceptanceCriteria\": [\"`/settings` lists every key with its current value and default\", \"`/set daily_kcal_target 2200` stores it and confirms with `2000 \\u2192 2200`\", \"An unknown key replies with the valid key list and changes nothing\", \"An out-of-range value replies with the accepted range and changes nothing\", \"`/set weekly_post_weekday 6` moves the planning post to Sunday and re-registers the job\", \"`/set` from the group is rejected by `private_only`\", \"No environment-provided value is reachable through `/set`\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        6,
+        13
+      ]
+    },
+    {
+      "id": 18,
+      "subject": "Task 18: Scheduler and startup catch-up",
+      "status": "completed",
+      "description": "**Goal:** The Friday planning post for **next** week, the weekday digest for the current week, timezone-aware times, re-registration on a settings change, and a catch-up when the bot starts with a week unplanned.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 18: Scheduler and startup catch-up` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/scheduler.py\", \"tests/test_scheduler.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_scheduler.py -v\", \"acceptanceCriteria\": [\"Every job time is a `datetime.time` carrying `ZoneInfo(config.timezone)`\", \"Across a DST boundary the job still fires at the configured local time \\u2014 asserted by comparing UTC offsets in January and July\", \"The daily job is registered for days 0\\u20134 only; the weekly job for `weekly_post_weekday` only\", \"The weekly job draws the week starting the **following** Monday and labels the post with that date\", \"The weekly job passes the current week's stored entries as history, so the cooldown spans the boundary\", \"Starting on a Wednesday with no current-week plan generates one, posts it, then posts the day\", \"Starting on a Saturday with next week unplanned generates and posts next week\", \"Starting when both weeks already have plans posts nothing\", \"A failed send logs and does not retry\", \"Changing a post time re-registers only the affected job\", \"Scheduled sends target `config.group_chat_id` and nothing else\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        14
+      ]
+    },
+    {
+      "id": 19,
+      "subject": "Task 19: Entry point",
+      "status": "completed",
+      "description": "**Goal:** Wire config, database, handlers, scheduler and the registered command list into a process that long-polls.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 19: Entry point` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"meal_planning_bot/__main__.py\", \"meal_planning_bot/telegram_bridge.py\", \"tests/test_handlers.py\"], \"verifyCommand\": \".venv/bin/pytest tests/test_handlers.py -v\", \"acceptanceCriteria\": [\"Every handler except `/myid` is wrapped in `allowed(config)` \\u2014 asserted by a test that walks the registered handler list\", \"The command list passed to `setMyCommands` matches `formatting.COMMANDS` exactly\", \"Logging is configured at `config.log_level` and the token never appears in a log record\", \"`python -m meal_planning_bot` with a missing required variable exits non-zero printing the variable name\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        16,
+        17,
+        18
+      ]
+    },
+    {
+      "id": 20,
+      "subject": "Task 20: End-to-end integration suite and coverage gate",
+      "status": "completed",
+      "description": "**Goal:** Drive the fully assembled application \u2014 real SQLite file, real handler registration, real `ConversationHandler` state machine \u2014 through a complete user journey against a fake Telegram transport, and put a coverage floor in CI.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 20: End-to-end integration suite and coverage gate` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"tests/fakes.py\", \"tests/test_integration.py\", \"meal_planning_bot/__main__.py\", \".agent/features/command-surface/overview.md\", \".github/workflows/ci.yml\", \"requirements-dev.txt\", \"pyproject.toml\"], \"verifyCommand\": \".venv/bin/pytest tests/test_integration.py -v\", \"acceptanceCriteria\": [\"`FakeBot` records every `send_message`, `edit_message_text` and `answer_callback_query` as `(chat_id, text, markup)` tuples, and raises on any method the code calls that the fake has not implemented \\u2014 so a new Telegram call cannot slip through untested\", \"The database is a real file under `tmp_path`, so the PRAGMAs, WAL and the migrations run exactly as in production\", \"**Full journey in one test:** empty database \\u2192 six dishes created through the `/newdish` wizard (creating foods inline) \\u2192 `/regenerate` \\u2192 `/plan` lists 25 dishes \\u2192 `/shopping` totals match a figure computed by hand in the test \\u2192 `/swap martes cena` changes exactly one entry \\u2192 `/shopping` changes accordingly \\u2192 `/today` matches that day's row of `/plan`\", \"**Persistence across a restart:** a second `build_application` over the same file returns the same plan and the same catalogue\", \"**Access:** the same journey replayed from a user ID outside the allow-list produces zero calls on `FakeBot`\", \"**Private-only:** `/newdish` from the group chat replies with the redirect and starts no conversation\", \"**Scheduled jobs:** invoking `weekly_job` and `daily_job` directly posts to `config.group_chat_id` and to no other chat\", \"**Empty catalogue:** `/regenerate` on an empty database replies with the `PlannerFailure` diagnosis naming all four meal types, and writes no plan\", \"Coverage is measured and CI fails below 85 %, with `meal_planning_bot/__main__.py` excluded from the denominator\", \"`meal_planning_bot/telegram_bridge.py` is NOT excluded. It adapts real `telegram.Update` objects to the handlers' Protocols and converts keyboards, which is the seam most likely to be wrong in production and exactly what this suite drives real `Update` objects through. Only the process wiring in `__main__.py` is exempt\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        19
+      ]
+    },
+    {
+      "id": 21,
+      "subject": "Task 21: Container image and release pipeline",
+      "status": "completed",
+      "description": "**Goal:** A slim non-root image, a GHCR build-and-push workflow, and the `spec-update-check` gate.\n\nSee `docs/superpowers/plans/2026-09-19-telegram-meal-planning-bot.md` -> `### Task 21: Container image and release pipeline` for the full steps and code.\n\n```json:metadata\n{\"files\": [\"Dockerfile\", \".dockerignore\", \".github/workflows/build-and-push.yml\", \".github/workflows/spec-update-check.yml\"], \"verifyCommand\": \"docker build -t meal_planning_bot:dev . && docker run --rm meal_planning_bot:dev; echo $?\", \"acceptanceCriteria\": [\"`docker build -t meal_planning_bot:dev .` succeeds and the image runs as UID 1000\", \"`docker run --rm meal_planning_bot:dev` exits 2 with `TELEGRAM_BOT_TOKEN is required`\", \"The build workflow pushes to `ghcr.io/${{ github.repository }}` on `main` and on `v*` tags, and builds without pushing on pull requests\", \"`spec-update-check` fails a pull request that changes `meal_planning_bot/` without changing `.agent/features/`, and passes when the label `spec:not-needed` is applied\", \"The GHCR package is set to public visibility\"], \"requiresUserVerification\": false}\n```",
+      "blockedBy": [
+        20
+      ]
+    }
+  ],
+  "lastUpdated": "2026-09-19T19:40:59.017780+00:00"
+}

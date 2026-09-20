@@ -1,0 +1,432 @@
+{
+  "aceite de oliva": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 884
+  },
+  "agua": {
+    "unit": "ml",
+    "category": "drinks",
+    "kcal_ref": 0
+  },
+  "aguacate": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 160
+  },
+  "ajo": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 149
+  },
+  "almendra": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 579
+  },
+  "alubia": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 333
+  },
+  "arroz": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 360
+  },
+  "atun": {
+    "unit": "g",
+    "category": "meat_fish",
+    "kcal_ref": 132
+  },
+  "avena": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 389
+  },
+  "azucar": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 387
+  },
+  "bacon": {
+    "unit": "g",
+    "category": "meat_fish",
+    "kcal_ref": 541
+  },
+  "brocoli": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 34
+  },
+  "calabacin": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 17
+  },
+  "caldo": {
+    "unit": "ml",
+    "category": "pantry",
+    "kcal_ref": 5
+  },
+  "cebolla": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 40
+  },
+  "cerdo": {
+    "unit": "g",
+    "category": "meat_fish",
+    "kcal_ref": 242
+  },
+  "cereales": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 378
+  },
+  "cerveza": {
+    "unit": "ml",
+    "category": "drinks",
+    "kcal_ref": 43
+  },
+  "champinon": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 22
+  },
+  "chocolate": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 546
+  },
+  "chorizo": {
+    "unit": "g",
+    "category": "meat_fish",
+    "kcal_ref": 455
+  },
+  "croissant": {
+    "unit": "g",
+    "category": "bakery",
+    "kcal_ref": 406
+  },
+  "espinaca": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 23
+  },
+  "fresa": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 32
+  },
+  "frutos secos": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 600
+  },
+  "galletas": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 480
+  },
+  "gamba": {
+    "unit": "g",
+    "category": "meat_fish",
+    "kcal_ref": 99
+  },
+  "garbanzo": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 364
+  },
+  "guisantes congelados": {
+    "unit": "g",
+    "category": "frozen",
+    "kcal_ref": 81
+  },
+  "harina": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 364
+  },
+  "helado": {
+    "unit": "g",
+    "category": "frozen",
+    "kcal_ref": 207
+  },
+  "huevo": {
+    "unit": "unit",
+    "category": "dairy_eggs",
+    "kcal_ref": 78
+  },
+  "jamon cocido": {
+    "unit": "g",
+    "category": "meat_fish",
+    "kcal_ref": 145
+  },
+  "jamon serrano": {
+    "unit": "g",
+    "category": "meat_fish",
+    "kcal_ref": 241
+  },
+  "ketchup": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 112
+  },
+  "kiwi": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 61
+  },
+  "leche": {
+    "unit": "ml",
+    "category": "dairy_eggs",
+    "kcal_ref": 64
+  },
+  "lechuga": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 15
+  },
+  "lenteja": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 353
+  },
+  "levadura": {
+    "unit": "g",
+    "category": "other",
+    "kcal_ref": 105
+  },
+  "limon": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 29
+  },
+  "lomo": {
+    "unit": "g",
+    "category": "meat_fish",
+    "kcal_ref": 143
+  },
+  "magdalena": {
+    "unit": "g",
+    "category": "bakery",
+    "kcal_ref": 380
+  },
+  "mantequilla": {
+    "unit": "g",
+    "category": "dairy_eggs",
+    "kcal_ref": 717
+  },
+  "manzana": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 52
+  },
+  "mayonesa": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 680
+  },
+  "melon": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 34
+  },
+  "merluza": {
+    "unit": "g",
+    "category": "meat_fish",
+    "kcal_ref": 86
+  },
+  "mermelada": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 278
+  },
+  "miel": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 304
+  },
+  "mostaza": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 66
+  },
+  "naranja": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 47
+  },
+  "nata": {
+    "unit": "ml",
+    "category": "dairy_eggs",
+    "kcal_ref": 292
+  },
+  "nuez": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 654
+  },
+  "pan": {
+    "unit": "g",
+    "category": "bakery",
+    "kcal_ref": 265
+  },
+  "pan integral": {
+    "unit": "g",
+    "category": "bakery",
+    "kcal_ref": 247
+  },
+  "pasta": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 371
+  },
+  "patata": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 77
+  },
+  "patatas fritas congeladas": {
+    "unit": "g",
+    "category": "frozen",
+    "kcal_ref": 155
+  },
+  "pavo": {
+    "unit": "g",
+    "category": "meat_fish",
+    "kcal_ref": 135
+  },
+  "pepino": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 15
+  },
+  "pera": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 57
+  },
+  "pimiento": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 20
+  },
+  "pipas": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 570
+  },
+  "pizza congelada": {
+    "unit": "g",
+    "category": "frozen",
+    "kcal_ref": 266
+  },
+  "platano": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 89
+  },
+  "pollo": {
+    "unit": "g",
+    "category": "meat_fish",
+    "kcal_ref": 165
+  },
+  "queso": {
+    "unit": "g",
+    "category": "dairy_eggs",
+    "kcal_ref": 402
+  },
+  "queso fresco": {
+    "unit": "g",
+    "category": "dairy_eggs",
+    "kcal_ref": 98
+  },
+  "queso rallado": {
+    "unit": "g",
+    "category": "dairy_eggs",
+    "kcal_ref": 380
+  },
+  "refresco de cola": {
+    "unit": "ml",
+    "category": "drinks",
+    "kcal_ref": 42
+  },
+  "sal": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 0
+  },
+  "salmon": {
+    "unit": "g",
+    "category": "meat_fish",
+    "kcal_ref": 208
+  },
+  "salsa de soja": {
+    "unit": "ml",
+    "category": "pantry",
+    "kcal_ref": 53
+  },
+  "sandia": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 30
+  },
+  "ternera": {
+    "unit": "g",
+    "category": "meat_fish",
+    "kcal_ref": 250
+  },
+  "tomate": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 18
+  },
+  "tomate frito": {
+    "unit": "g",
+    "category": "pantry",
+    "kcal_ref": 82
+  },
+  "tostada": {
+    "unit": "g",
+    "category": "bakery",
+    "kcal_ref": 300
+  },
+  "uva": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 69
+  },
+  "verduras congeladas": {
+    "unit": "g",
+    "category": "frozen",
+    "kcal_ref": 40
+  },
+  "vinagre": {
+    "unit": "ml",
+    "category": "pantry",
+    "kcal_ref": 19
+  },
+  "vino": {
+    "unit": "ml",
+    "category": "drinks",
+    "kcal_ref": 83
+  },
+  "yogur": {
+    "unit": "g",
+    "category": "dairy_eggs",
+    "kcal_ref": 61
+  },
+  "zanahoria": {
+    "unit": "g",
+    "category": "produce",
+    "kcal_ref": 41
+  },
+  "zumo de naranja": {
+    "unit": "ml",
+    "category": "drinks",
+    "kcal_ref": 45
+  }
+}

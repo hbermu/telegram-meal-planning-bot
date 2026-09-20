@@ -1,0 +1,26 @@
+[project]
+name = "meal_planning_bot"
+version = "0.1.0"
+requires-python = ">=3.13"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.coverage.run]
+source = ["meal_planning_bot"]
+omit = ["meal_planning_bot/__main__.py"]
