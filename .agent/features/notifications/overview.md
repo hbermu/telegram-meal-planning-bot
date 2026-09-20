@@ -30,13 +30,15 @@
 9. When the bot starts, it shall generate and post next week's plan if the current local day is at or past `weekly_post_weekday` and next week has no plan.
 10. The bot shall not re-post a plan that already exists when it starts.
 11. If a scheduled send fails, then the bot shall log the failure and shall not retry, so a Telegram outage cannot produce a duplicate post later.
+11b. If the catalogue cannot produce a plan when the startup catch-up runs, then the bot shall log the diagnosis, skip that week and continue starting. The catch-up runs before polling begins, so an exception there stops the bot from ever starting — and a new deployment always has an empty catalogue, which can only be filled through the bot itself. Raising would deadlock a fresh install permanently.
+11c. If the catalogue cannot produce a plan when the weekly or the daily job runs, then the bot shall post the diagnosis to the group chat and shall save no plan. The people reading that chat are the people who can fix it with `/newdish`.
 12. When `weekly_post_weekday`, `weekly_post_time` or `daily_post_time` is changed through `/set`, the scheduler shall re-register the affected job without a restart.
 13. The bot shall never post to any chat other than the configured group from a scheduled job.
 14. When generating next week's plan, the bot shall pass the current week's stored entries as history, so the cooldown spans the boundary between the two weeks.
 
 ## Tests covering this
 
-- `tests/test_scheduler.py` — job times are timezone-aware and land on the configured local time across a DST boundary; the weekly job is registered for `weekly_post_weekday` only; the daily job is registered for days 0–4 only; the weekly job targets next week's Monday; the daily job targets today's row of the current week; the startup catch-up generates the current week on a Wednesday with no plan and next week on a Saturday, and does nothing when both exist; changing a time or the weekday re-registers only that job
+- `tests/test_scheduler.py` — an empty catalogue leaves the startup catch-up returning no plans instead of raising, and makes the weekly and daily jobs post the diagnosis to the group; job times are timezone-aware and land on the configured local time across a DST boundary; the weekly job is registered for `weekly_post_weekday` only; the daily job is registered for days 0–4 only; the weekly job targets next week's Monday; the daily job targets today's row of the current week; the startup catch-up generates the current week on a Wednesday with no plan and next week on a Saturday, and does nothing when both exist; changing a time or the weekday re-registers only that job
 - `tests/test_integration.py` — the weekly and daily jobs post to the group chat and to no other chat
 
 ## Non-goals

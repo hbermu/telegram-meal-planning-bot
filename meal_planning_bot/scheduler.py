@@ -8,10 +8,15 @@ from zoneinfo import ZoneInfo
 
 from meal_planning_bot import repo
 from meal_planning_bot.config import Config
-from meal_planning_bot.formatting import render_day, render_plan, render_shopping
+from meal_planning_bot.formatting import (
+    render_day,
+    render_plan,
+    render_planner_failure,
+    render_shopping,
+)
 from meal_planning_bot.handlers import load_all_foods, load_dishes_for_plan
 from meal_planning_bot.models import Plan
-from meal_planning_bot.planner import plan_week
+from meal_planning_bot.planner import PlannerFailure, plan_week
 from meal_planning_bot.shopping import aggregate
 from meal_planning_bot.weeks import current_week_start, next_week_start
 
@@ -100,7 +105,14 @@ async def weekly_job(
     week_start = next_week_start(today)
     plan = repo.get_plan(conn, week_start)
     if plan is None:
-        plan = _generate_plan(conn, week_start, today, rng)
+        try:
+            plan = _generate_plan(conn, week_start, today, rng)
+        except PlannerFailure as failure:
+            # The group is the right place for this: the reason there is no plan
+            # is that the catalogue cannot support one, and the people reading
+            # are the people who can fix it with /newdish.
+            await _send(bot, config, render_planner_failure(failure.diagnosis))
+            return
     await post_plan_and_shopping(bot, config, conn, plan)
 
 
@@ -110,7 +122,11 @@ async def daily_job(
     week_start = current_week_start(today)
     plan = repo.get_plan(conn, week_start)
     if plan is None:
-        plan = _generate_plan(conn, week_start, today, rng)
+        try:
+            plan = _generate_plan(conn, week_start, today, rng)
+        except PlannerFailure as failure:
+            await _send(bot, config, render_planner_failure(failure.diagnosis))
+            return
         await post_plan_and_day(bot, config, conn, plan, today.weekday())
         return
     dishes = load_dishes_for_plan(conn, plan)
@@ -158,16 +174,34 @@ def reschedule(job_queue: JobQueueLike, conn: Connection, config: Config, key: s
 
 
 def startup_catch_up(conn: Connection, config: Config, today: date) -> list[Plan]:
+    """Generate the weeks that should already exist, skipping any that cannot be drawn.
+
+    A PlannerFailure here must never reach the caller. This runs inside post_init, so
+    an exception kills the process before polling starts -- and on a brand new database
+    the catalogue is empty, so it always fails. That is a deadlock: the catalogue can
+    only be filled through the bot, and the bot will not start until the catalogue is
+    filled. Logging and carrying on is the only behaviour that lets a fresh deployment
+    reach the point where someone can send /newdish.
+    """
     generated: list[Plan] = []
     rng = Random()
 
     current_start = current_week_start(today)
     if today.weekday() < 5 and repo.get_plan(conn, current_start) is None:
-        generated.append(_generate_plan(conn, current_start, today, rng))
+        _try_generate(conn, current_start, today, rng, generated)
 
     weekly_weekday = int(repo.get_setting(conn, "weekly_post_weekday"))
     next_start = next_week_start(today)
     if today.weekday() >= weekly_weekday and repo.get_plan(conn, next_start) is None:
-        generated.append(_generate_plan(conn, next_start, today, rng))
+        _try_generate(conn, next_start, today, rng, generated)
 
     return generated
+
+
+def _try_generate(
+    conn: Connection, week_start: date, today: date, rng: Random, into: list[Plan]
+) -> None:
+    try:
+        into.append(_generate_plan(conn, week_start, today, rng))
+    except PlannerFailure as failure:
+        logger.warning("no plan for week of %s: %s", week_start, failure.diagnosis)

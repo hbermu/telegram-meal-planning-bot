@@ -363,3 +363,33 @@ def test_startup_catch_up_does_nothing_on_a_weekend_with_no_current_plan(
     generated = scheduler.startup_catch_up(conn, CONFIG, today)
     assert generated == []
     assert repo.get_plan(conn, current_start) is None
+
+
+def test_startup_catch_up_survives_an_empty_catalogue(conn: sqlite3.Connection) -> None:
+    """A fresh deployment has no dishes, and the catalogue can only be filled
+    through the bot. If this raised, post_init would kill the process before
+    polling started and nobody could ever send /newdish."""
+    generated = scheduler.startup_catch_up(conn, CONFIG, date(2026, 9, 16))
+
+    assert generated == []
+    assert conn.execute("SELECT count(*) FROM plans").fetchone()[0] == 0
+
+
+def test_weekly_job_reports_an_empty_catalogue_to_the_group(conn: sqlite3.Connection) -> None:
+    bot = FakeBot()
+    _run(scheduler.weekly_job(bot, conn, CONFIG, date(2026, 9, 18), Random(0)))
+
+    assert len(bot.sent) == 1
+    chat_id, text = bot.sent[0]
+    assert chat_id == CONFIG.group_chat_id
+    assert "desayuno" in text.lower() or "breakfast" in text.lower()
+    assert conn.execute("SELECT count(*) FROM plans").fetchone()[0] == 0
+
+
+def test_daily_job_reports_an_empty_catalogue_to_the_group(conn: sqlite3.Connection) -> None:
+    bot = FakeBot()
+    _run(scheduler.daily_job(bot, conn, CONFIG, date(2026, 9, 16), Random(0)))
+
+    assert len(bot.sent) == 1
+    assert bot.sent[0][0] == CONFIG.group_chat_id
+    assert conn.execute("SELECT count(*) FROM plans").fetchone()[0] == 0
