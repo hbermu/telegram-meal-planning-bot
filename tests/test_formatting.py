@@ -5,6 +5,8 @@ from pathlib import Path
 from meal_planning_bot.formatting import (
     COMMANDS,
     DAY_LABELS,
+    MEAL_TYPE_LABELS,
+    PARTIAL_PLAN_NOTICE,
     SLOT_LABELS,
     render_day,
     render_dish,
@@ -24,6 +26,7 @@ from meal_planning_bot.models import (
     MealType,
     Plan,
     PlanEntry,
+    Slot,
     Unit,
 )
 from meal_planning_bot.shopping import ShoppingGroup, ShoppingLine
@@ -193,3 +196,49 @@ def test_spanish_lives_only_in_formatting() -> None:
         for line in path.read_text().splitlines():
             stripped = line.split("#", 1)[0]
             assert stripped.isascii(), f"non-ASCII literal in {path}: {line}"
+
+
+# --- partial plans ----------------------------------------------------------
+
+
+def _lunch_only_plan() -> tuple[Plan, dict[int, Dish]]:
+    dishes = {day + 1: _dish(day + 1, f"Plato{day + 1}", MealType.LUNCH, 700) for day in range(5)}
+    entries = tuple(PlanEntry(day=day, slot=Slot.LUNCH, dish_id=day + 1) for day in range(5))
+    return Plan(week_start=date(2026, 9, 21), entries=entries), dishes
+
+
+def test_render_plan_omits_the_slots_a_partial_plan_never_drew() -> None:
+    plan, dishes = _lunch_only_plan()
+    text = render_plan(plan, dishes, is_next_week=False)
+    assert text.count(SLOT_LABELS[Slot.LUNCH]) == 5
+    for slot in (Slot.BREAKFAST, Slot.SNACK1, Slot.SNACK2, Slot.DINNER):
+        assert SLOT_LABELS[slot] not in text
+
+
+def test_render_plan_totals_only_the_slots_it_drew() -> None:
+    plan, dishes = _lunch_only_plan()
+    text = render_plan(plan, dishes, is_next_week=False)
+    assert text.count("Total: 700 kcal") == 5
+
+
+def test_render_plan_names_the_missing_meal_types() -> None:
+    plan, dishes = _lunch_only_plan()
+    text = render_plan(plan, dishes, is_next_week=False)
+    notice = PARTIAL_PLAN_NOTICE.format(meals="desayuno, snack y cena")
+    assert notice in text
+    assert MEAL_TYPE_LABELS[MealType.LUNCH].lower() not in notice
+
+
+def test_render_plan_has_no_notice_when_every_meal_type_is_planned() -> None:
+    plan, dishes = _full_week_plan()
+    text = render_plan(plan, dishes, is_next_week=False)
+    assert PARTIAL_PLAN_NOTICE.format(meals="") not in text
+    assert "Sin planificar" not in text
+
+
+def test_render_day_omits_the_slots_a_partial_plan_never_drew() -> None:
+    plan, dishes = _lunch_only_plan()
+    text = render_day(plan, dishes, 0)
+    assert SLOT_LABELS[Slot.LUNCH] in text
+    assert SLOT_LABELS[Slot.DINNER] not in text
+    assert "Sin planificar" not in text

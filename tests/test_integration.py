@@ -54,6 +54,7 @@ def _config(tmp_path: Path, allowed: frozenset[int] = frozenset({ALLOWED_USER}))
         db_path=tmp_path / "mealbot.db",
         timezone="UTC",
         log_level="INFO",
+        allow_partial_plan=False,
     )
 
 

@@ -5,6 +5,7 @@ from enum import StrEnum
 from math import ceil
 
 from meal_planning_bot.models import (
+    SLOT_MEAL_TYPE,
     SLOT_ORDER,
     Category,
     Dish,
@@ -63,6 +64,11 @@ DISH_NOT_FOUND_MESSAGE = "No encontré ningún plato con ese nombre."
 FOOD_NOT_FOUND_MESSAGE = "No encontré ningún alimento con ese nombre."
 RESTORE_NOT_FOUND_MESSAGE = "No encontré nada archivado con ese nombre."
 UNKNOWN_ARGUMENT_MESSAGE = "No entendí ese argumento."
+SLOT_NOT_PLANNED_MESSAGE = (
+    "Ese turno no está planificado esta semana porque no hay platos suficientes de ese tipo. "
+    "Añade platos con /newdish y vuelve a generar el plan con /regenerate."
+)
+PARTIAL_PLAN_NOTICE = "Sin planificar por falta de platos: {meals}."
 SWAP_UNSATISFIABLE_MESSAGE = (
     "No hay ningún plato que encaje en ese turno sin romper las restricciones. "
     "Se mantiene el plato actual."
@@ -87,11 +93,27 @@ def _day_block(
     lines = [f"{DAY_LABELS[day]} {day_date:%d/%m}"]
     total = 0
     for slot in SLOT_ORDER:
-        dish = dishes[by_slot[slot].dish_id]
+        entry = by_slot.get(slot)
+        if entry is None:
+            continue
+        dish = dishes[entry.dish_id]
         lines.append(f"  {SLOT_LABELS[slot]}: {dish.name} ({dish.kcal} kcal)")
         total += dish.kcal
     lines.append(f"  Total: {total} kcal")
     return "\n".join(lines)
+
+
+def _join_es(parts: Sequence[str]) -> str:
+    if len(parts) == 1:
+        return parts[0]
+    return f"{', '.join(parts[:-1])} y {parts[-1]}"
+
+
+# The meal type, not the slot, is what names the gap: both snack slots are filled
+# from one pool, and a meal type is what someone fixes with /newdish.
+def _missing_meal_types(plan: Plan) -> tuple[MealType, ...]:
+    covered = {SLOT_MEAL_TYPE[entry.slot] for entry in plan.entries}
+    return tuple(meal_type for meal_type in MealType if meal_type not in covered)
 
 
 def render_plan(plan: Plan, dishes: Mapping[int, Dish], is_next_week: bool) -> str:
@@ -101,6 +123,10 @@ def render_plan(plan: Plan, dishes: Mapping[int, Dish], is_next_week: bool) -> s
         _day_block(day, plan.week_start + timedelta(days=day), plan.entries, dishes)
         for day in range(5)
     ]
+    missing = _missing_meal_types(plan)
+    if missing:
+        labels = [MEAL_TYPE_LABELS[meal_type].lower() for meal_type in missing]
+        blocks.append(PARTIAL_PLAN_NOTICE.format(meals=_join_es(labels)))
     return "\n\n".join([header, *blocks])
 
 

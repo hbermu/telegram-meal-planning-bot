@@ -1,6 +1,6 @@
 # Shopping List
 
-> Adds up every ingredient across the twenty-five dishes of a week and presents the totals grouped by supermarket category, so one message covers the whole shop.
+> Adds up every ingredient across a week's dishes and presents the totals grouped by supermarket category, so one message covers the whole shop. A week that covers every slot has twenty-five of them; a partial one has fewer and the list simply shrinks.
 
 ## Source files
 

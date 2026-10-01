@@ -1,17 +1,18 @@
 # Week Planner
 
-> Draws a Monday-to-Friday menu at random from the active catalogue: five days, five slots each, under a daily calorie budget and variety rules. The solver is pure — a catalogue, the recent history, the settings and a seeded random source in, a plan out.
+> Draws a Monday-to-Friday menu at random from the active catalogue: five days, five slots each, under a daily calorie budget and variety rules. The solver is pure — a catalogue, the recent history, the settings and a seeded random source in, a plan out. A plan may cover fewer slots when the catalogue cannot support them all; see `partial-plans.md`.
 
 ## Source files
 
-- `meal_planning_bot/planner.py` — the solver, the constraint checks, and the relaxation ladder
-- `meal_planning_bot/models.py` — `PlanDraft`, `PlanEntry`, `SlotCandidates`, `PlannerFailure`
+- `meal_planning_bot/planner.py` — the solver, the constraint checks, the slot eligibility rule, and the relaxation ladder
+- `meal_planning_bot/models.py` — `Plan`, `PlanEntry`, `Slot`, `SLOT_ORDER`, `SLOT_MEAL_TYPE`
 - `meal_planning_bot/repo.py` — loads the catalogue and the recent history, persists the result
 - `meal_planning_bot/handlers/plan.py` — `/plan`, `/regenerate`, `/swap`
 - `meal_planning_bot/weeks.py` — resolves the `siguiente` keyword to next Monday's `week_start`
 
 ## Settings used
 
+- `MEALBOT_ALLOW_PARTIAL_PLAN` (environment) — whether a plan may cover fewer than the five slots, default `false`; see `partial-plans.md`
 - `daily_kcal_target` (settings table) — target calories per day
 - `kcal_tolerance_pct` (settings table) — allowed deviation from the target, per cent
 - `max_food_repeats_per_day` (settings table) — how many dishes in one day may share a food
@@ -19,7 +20,7 @@
 
 ## Requirements
 
-1. The planner shall produce exactly one dish for each of the twenty-five pairs of day 0–4 and slot `breakfast`, `snack1`, `lunch`, `snack2`, `dinner`.
+1. The planner shall produce exactly one dish for each pair of day 0–4 and the slots it is drawing, which are all five of `breakfast`, `snack1`, `lunch`, `snack2`, `dinner` unless `MEALBOT_ALLOW_PARTIAL_PLAN` narrows them as described in `partial-plans.md`.
 2. The planner shall draw each slot only from active dishes whose meal type matches the slot, where both `snack1` and `snack2` match meal type `snack`.
 3. The planner shall satisfy every hard constraint in `constraints.md` or shall relax them in the order given in `relaxation.md`.
 4. The planner shall take a `random.Random` instance as an argument and shall use no other source of randomness, so that a given seed and catalogue always produce the same plan.
@@ -30,8 +31,9 @@
 9. The planner shall abandon a relaxation step after a bounded number of search node visits and move to the next step rather than run unbounded.
 10. When a plan is regenerated for a week that already has one, the repository shall replace the existing plan's entries rather than create a second plan for the same `week_start`.
 10b. The planner shall be able to draw any `week_start`, and the commands shall address either the current week or the following one through the optional keyword `siguiente`.
-11. When one slot is re-drawn, the planner shall hold the other twenty-four assignments fixed and shall apply the same hard constraints to the candidate.
+11. When one slot is re-drawn, the planner shall hold every other assignment of that plan fixed and shall apply the same hard constraints to the candidate.
 12. If re-drawing one slot has no valid candidate, then the bot shall say so and shall leave the existing assignment in place.
+13. If re-drawing names a slot the stored plan does not cover, then the bot shall say so and shall change nothing; see `partial-plans.md`.
 
 ## Commands
 
@@ -45,9 +47,11 @@
 
 - `tests/test_planner.py` — a solvable catalogue fills all twenty-five slots; the same seed reproduces the same plan; each hard constraint holds in the result; each relaxation step is reached in order; the node cap ends a hopeless search; a catalogue short on dinners fails with dinner named; single-slot re-draw keeps the other assignments and honours the constraints
 - `tests/test_repo.py` — regenerating a week replaces its entries instead of duplicating the plan row
+- `tests/test_planner.py`, `tests/test_planner_invariants.py` — the partial-plan behaviour listed in `partial-plans.md`
 
 ## Non-goals
 
+- Drawing a slot whose meal type cannot fill its week with distinct dishes. See `partial-plans.md` for what the planner does instead of refusing outright.
 - Optimising for anything. The first plan that satisfies the constraints wins; there is no score and no "best" plan.
 - Leftovers, batch cooking, or carrying a dish from lunch to the next day's dinner.
 - Weekends. Saturday and Sunday are never planned.

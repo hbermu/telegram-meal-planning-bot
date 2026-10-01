@@ -4,7 +4,7 @@
 
 ## Source files
 
-- `meal_planning_bot/planner.py` — `check_slot`, `day_kcal_window`, and the backtracking loop
+- `meal_planning_bot/planner.py` — `_candidate_ok`, `day_window`, `_prune`, and the backtracking loop
 
 ## Settings used
 
@@ -12,16 +12,17 @@
 
 ## Requirements
 
-1. The planner shall enforce that the sum of the five dishes' kcal on each day falls within `daily_kcal_target` plus or minus `kcal_tolerance_pct` per cent, rounded to whole calories.
+1. The planner shall enforce that the sum of a day's dishes' kcal falls within `daily_kcal_target` plus or minus `kcal_tolerance_pct` per cent, rounded to whole calories.
+1b. While the plan covers fewer than the five slots, the planner shall enforce only the upper bound of that window; see `partial-plans.md`.
 2. The planner shall enforce that no food appears in more than `max_food_repeats_per_day` dishes on the same day.
 3. The planner shall enforce that a dish does not appear twice on the same day, including across the two snack slots.
 4. The planner shall enforce, for each dish, that the gap between the day it is drawn and the most recent day it was previously served is at least `cooldown_days_<meal_type>` days, counting calendar days and treating the previous week's Friday and the current week's Monday as three days apart.
 5. The planner shall apply the cooldown against both the plan being built and the served history handed to it.
 6. The planner shall treat the cooldown as satisfied for a dish with no history.
 7. While filling a day, the planner shall prune a partial assignment whose running kcal total plus the sum of the cheapest remaining candidates exceeds the upper bound of the day's window.
-8. While filling a day, the planner shall prune a partial assignment whose running kcal total plus the sum of the dearest remaining candidates falls below the lower bound of the day's window.
+8. While filling a day, the planner shall prune a partial assignment whose running kcal total plus the sum of the dearest remaining candidates falls below the lower bound of the day's window, which is zero when the plan covers fewer than the five slots.
 9. The planner shall consider candidates for a slot in an order shuffled by the injected random source, so that the same catalogue does not always yield the same plan.
-10. The planner shall fill days in order 0 to 4 and slots in order `breakfast`, `snack1`, `lunch`, `snack2`, `dinner`, backtracking to the previous slot when a day cannot be completed.
+10. The planner shall fill days in order 0 to 4 and the slots it is drawing in the order `breakfast`, `snack1`, `lunch`, `snack2`, `dinner`, backtracking to the previous slot when a day cannot be completed.
 11. The planner shall count each visited node and shall abandon the attempt once the count exceeds fifty thousand.
 
 ## Tests covering this
@@ -32,4 +33,4 @@
 
 - Soft constraints or weighted scoring. Every rule here is pass or fail.
 - Constraints across weeks other than the cooldown.
-- Balancing calories between slots. Only the daily total is budgeted.
+- Balancing calories between slots. Only the daily total is budgeted, and a partial day is only capped.

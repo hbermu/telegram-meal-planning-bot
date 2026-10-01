@@ -62,14 +62,16 @@ def parse_local_time(raw: str, tz: ZoneInfo) -> time:
     return time(hour=hour, minute=minute, tzinfo=tz)
 
 
-def _generate_plan(conn: Connection, week_start: date, today: date, rng: Random) -> Plan:
+def _generate_plan(
+    conn: Connection, config: Config, week_start: date, today: date, rng: Random
+) -> Plan:
     catalogue = repo.list_dishes(conn, archived=False)
     # `around=today` gives scheduled_history a +-60 day window, which always
     # includes the just-saved current week even when week_start is next
     # week's Monday -- that is what makes the cooldown span the boundary.
     history = repo.scheduled_history(conn, today)
     settings = repo.planner_settings(conn)
-    plan = plan_week(catalogue, history, settings, week_start, rng)
+    plan = plan_week(catalogue, history, settings, week_start, rng, config.allow_partial_plan)
     repo.save_plan(conn, plan)
     return plan
 
@@ -106,7 +108,7 @@ async def weekly_job(
     plan = repo.get_plan(conn, week_start)
     if plan is None:
         try:
-            plan = _generate_plan(conn, week_start, today, rng)
+            plan = _generate_plan(conn, config, week_start, today, rng)
         except PlannerFailure as failure:
             # The group is the right place for this: the reason there is no plan
             # is that the catalogue cannot support one, and the people reading
@@ -123,7 +125,7 @@ async def daily_job(
     plan = repo.get_plan(conn, week_start)
     if plan is None:
         try:
-            plan = _generate_plan(conn, week_start, today, rng)
+            plan = _generate_plan(conn, config, week_start, today, rng)
         except PlannerFailure as failure:
             await _send(bot, config, render_planner_failure(failure.diagnosis))
             return
@@ -188,20 +190,25 @@ def startup_catch_up(conn: Connection, config: Config, today: date) -> list[Plan
 
     current_start = current_week_start(today)
     if today.weekday() < 5 and repo.get_plan(conn, current_start) is None:
-        _try_generate(conn, current_start, today, rng, generated)
+        _try_generate(conn, config, current_start, today, rng, generated)
 
     weekly_weekday = int(repo.get_setting(conn, "weekly_post_weekday"))
     next_start = next_week_start(today)
     if today.weekday() >= weekly_weekday and repo.get_plan(conn, next_start) is None:
-        _try_generate(conn, next_start, today, rng, generated)
+        _try_generate(conn, config, next_start, today, rng, generated)
 
     return generated
 
 
 def _try_generate(
-    conn: Connection, week_start: date, today: date, rng: Random, into: list[Plan]
+    conn: Connection,
+    config: Config,
+    week_start: date,
+    today: date,
+    rng: Random,
+    into: list[Plan],
 ) -> None:
     try:
-        into.append(_generate_plan(conn, week_start, today, rng))
+        into.append(_generate_plan(conn, config, week_start, today, rng))
     except PlannerFailure as failure:
         logger.warning("no plan for week of %s: %s", week_start, failure.diagnosis)

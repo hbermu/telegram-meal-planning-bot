@@ -32,5 +32,5 @@
 ## Non-goals
 
 - A user-configurable ladder. The order is fixed in code.
-- Partial plans. Either all twenty-five slots are filled or the attempt fails.
+- Relaxing which slots are drawn. The ladder loosens the constraints, never the shape of the plan; narrowing a plan to the meal types the catalogue supports is a separate, opt-in decision taken before the ladder runs, described in `partial-plans.md`.
 - Asking the user which rule to drop.

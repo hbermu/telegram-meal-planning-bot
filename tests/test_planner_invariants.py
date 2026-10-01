@@ -15,8 +15,15 @@ from meal_planning_bot.models import (
     Plan,
     PlannerSettings,
     ServedRecord,
+    Slot,
 )
-from meal_planning_bot.planner import PlannerFailure, _ladder, day_window, plan_week
+from meal_planning_bot.planner import (
+    PlannerFailure,
+    _ladder,
+    day_window,
+    eligible_slots,
+    plan_week,
+)
 from tests.factories import DEFAULT_SETTINGS, dish
 from tests.fixtures.realistic_catalogue import REALISTIC_CATALOGUE
 
@@ -27,13 +34,17 @@ def assert_plan_valid(
     history: Sequence[ServedRecord],
     settings: PlannerSettings,
     week_start: date,
+    slots: Sequence[Slot],
 ) -> None:
     effective = _ladder(settings)[plan.relaxation]
     by_id = {d.id: d for d in catalogue}
     low, high = day_window(effective)
+    # A plan that does not cover the whole day is held to the ceiling only.
+    if len(slots) < len(SLOT_ORDER):
+        low = 0
 
-    assert len(plan.entries) == 25
-    assert {(e.day, e.slot) for e in plan.entries} == {(d, s) for d in range(5) for s in SLOT_ORDER}
+    assert len(plan.entries) == 5 * len(slots)
+    assert {(e.day, e.slot) for e in plan.entries} == {(d, s) for d in range(5) for s in slots}
 
     last_served = {r.dish_id: r.served_on for r in history}
     by_day: dict[int, list[Dish]] = defaultdict(list)
@@ -128,7 +139,7 @@ def _fuzz_outcome(seed: int) -> tuple[list[Dish], list[ServedRecord], Plan | Non
     # same 200 results; solving each catalogue twice put the sweep over its time budget.
     catalogue, history = _fuzz_case(seed)
     try:
-        plan = plan_week(catalogue, history, DEFAULT_SETTINGS, WEEK_START, Random(seed))
+        plan = plan_week(catalogue, history, DEFAULT_SETTINGS, WEEK_START, Random(seed), False)
     except PlannerFailure:
         return catalogue, history, None
     return catalogue, history, plan
@@ -139,7 +150,7 @@ def test_every_returned_plan_is_valid(seed: int) -> None:
     catalogue, history, plan = _fuzz_outcome(seed)
     if plan is None:
         return
-    assert_plan_valid(plan, catalogue, history, DEFAULT_SETTINGS, WEEK_START)
+    assert_plan_valid(plan, catalogue, history, DEFAULT_SETTINGS, WEEK_START, SLOT_ORDER)
 
 
 def test_the_fuzz_actually_exercises_the_solver() -> None:
@@ -263,7 +274,9 @@ def test_the_soundness_sweep_has_genuine_failures() -> None:
     failures = 0
     for seed in range(TINY_SEEDS):
         try:
-            plan_week(_tiny_catalogue(Random(seed)), [], DEFAULT_SETTINGS, WEEK_START, Random(seed))
+            plan_week(
+                _tiny_catalogue(Random(seed)), [], DEFAULT_SETTINGS, WEEK_START, Random(seed), False
+            )
         except PlannerFailure:
             failures += 1
     assert failures >= TINY_SEEDS // 4, (
@@ -277,7 +290,7 @@ def test_failures_are_genuine(seed: int) -> None:
     rng = Random(seed)
     catalogue = _tiny_catalogue(rng)
     try:
-        plan_week(catalogue, [], DEFAULT_SETTINGS, WEEK_START, Random(seed))
+        plan_week(catalogue, [], DEFAULT_SETTINGS, WEEK_START, Random(seed), False)
     except PlannerFailure:
         loosest = _ladder(DEFAULT_SETTINGS)[-1]
         assert not brute_force_exists(catalogue, loosest, WEEK_START)
@@ -291,9 +304,9 @@ def test_fifty_weeks_never_need_relaxation() -> None:
     served: Counter[int] = Counter()
 
     for week in range(weeks):
-        plan = plan_week(catalogue, history, DEFAULT_SETTINGS, week_start, Random(week))
+        plan = plan_week(catalogue, history, DEFAULT_SETTINGS, week_start, Random(week), False)
         assert plan.relaxation == 0, f"week {week} needed relaxation {plan.relaxation}"
-        assert_plan_valid(plan, catalogue, history, DEFAULT_SETTINGS, week_start)
+        assert_plan_valid(plan, catalogue, history, DEFAULT_SETTINGS, week_start, SLOT_ORDER)
         for entry in plan.entries:
             history.append(ServedRecord(entry.dish_id, week_start + timedelta(days=entry.day)))
             served[entry.dish_id] += 1
@@ -310,3 +323,47 @@ def test_fifty_weeks_never_need_relaxation() -> None:
 
     for dish_obj in catalogue:
         assert served[dish_obj.id] > 0, f"dish {dish_obj.id} was never served over {weeks} weeks"
+
+
+# --- partial plans ----------------------------------------------------------
+#
+# The same soundness sweep, but on catalogues deliberately starved of whole meal
+# types: every constraint except the calorie floor must still hold over whatever
+# slots the planner decided it could fill.
+
+
+def _starved_catalogue(rng: Random) -> list[Dish]:
+    full = _generate_catalogue(rng)
+    kept = rng.sample(sorted(MealType), k=rng.randint(1, 3))
+    return [d for d in full if d.meal_type in kept]
+
+
+@pytest.mark.parametrize("seed", range(TINY_SEEDS))
+def test_every_partial_plan_is_valid(seed: int) -> None:
+    rng = Random(seed)
+    catalogue = _starved_catalogue(rng)
+    history = _generate_history(catalogue, rng) if catalogue else []
+    try:
+        plan = plan_week(catalogue, history, DEFAULT_SETTINGS, WEEK_START, Random(seed), True)
+    except PlannerFailure:
+        return
+    slots = eligible_slots(catalogue)
+    assert slots, "a plan was returned for a catalogue with no eligible slot"
+    assert_plan_valid(plan, catalogue, history, DEFAULT_SETTINGS, WEEK_START, slots)
+
+
+def test_the_partial_sweep_actually_returns_plans() -> None:
+    """Guards the sweep above, which is a no-op on any seed that fails."""
+    planned = 0
+    for seed in range(TINY_SEEDS):
+        rng = Random(seed)
+        catalogue = _starved_catalogue(rng)
+        try:
+            plan_week(catalogue, [], DEFAULT_SETTINGS, WEEK_START, Random(seed), True)
+        except PlannerFailure:
+            continue
+        planned += 1
+    assert planned >= TINY_SEEDS // 2, (
+        f"only {planned}/{TINY_SEEDS} starved catalogues yield a plan, so the sweep above "
+        "almost never checks anything"
+    )

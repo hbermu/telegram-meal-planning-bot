@@ -147,6 +147,7 @@ def build_application(
     app.bot_data["conn"] = conn
     app.bot_data["clock"] = clock
     app.bot_data["rng"] = Random()
+    app.bot_data["allow_partial_plan"] = config.allow_partial_plan
     app.bot_data["reschedule"] = lambda key: scheduler.reschedule(
         _job_queue(app), conn, config, key
     )

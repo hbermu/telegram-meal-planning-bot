@@ -16,6 +16,7 @@ class Config:
     db_path: Path
     timezone: str
     log_level: str
+    allow_partial_plan: bool
 
 
 def _required(env: Mapping[str, str], key: str) -> str:
@@ -23,6 +24,21 @@ def _required(env: Mapping[str, str], key: str) -> str:
     if not value:
         raise ConfigError(f"{key} is required")
     return value
+
+
+_TRUE = frozenset({"true", "1", "yes"})
+_FALSE = frozenset({"false", "0", "no"})
+
+
+def _parse_bool(env: Mapping[str, str], key: str, default: bool) -> bool:
+    raw = env.get(key, "").strip().lower()
+    if not raw:
+        return default
+    if raw in _TRUE:
+        return True
+    if raw in _FALSE:
+        return False
+    raise ConfigError(f"{key} must be one of true, false, 1, 0, yes, no")
 
 
 def _parse_allow_list(raw: str) -> frozenset[int]:
@@ -56,4 +72,5 @@ def load_config(env: Mapping[str, str]) -> Config:
         db_path=Path(env.get("MEALBOT_DB_PATH", "/data/mealbot.db")),
         timezone=timezone,
         log_level=env.get("MEALBOT_LOG_LEVEL", "INFO").upper(),
+        allow_partial_plan=_parse_bool(env, "MEALBOT_ALLOW_PARTIAL_PLAN", default=False),
     )

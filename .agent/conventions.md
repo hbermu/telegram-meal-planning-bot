@@ -57,7 +57,7 @@ These terms mean exactly one thing across every spec. Do not introduce synonyms.
 - **slot** — one of `breakfast`, `snack1`, `lunch`, `snack2`, `dinner`. A position in a day. Both snack slots draw from dishes whose meal type is `snack`.
 - **day** — an integer 0–4, Monday to Friday.
 - **week** — identified by `week_start`, the ISO date of its Monday. The **current** week contains today; the **next** week starts on the following Monday and is the only other week the bot will plan.
-- **plan** — the 25 dish assignments for one week.
+- **plan** — the dish assignments for one week: one per weekday and drawn slot, so 25 when every slot is drawn.
 - **catalogue** — the set of active dishes, grouped by meal type, that the planner may draw from.
 
 ## Update rule

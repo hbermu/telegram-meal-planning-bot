@@ -64,6 +64,12 @@ def get_rng(context: ContextLike) -> Random:
     return rng
 
 
+def get_allow_partial_plan(context: ContextLike) -> bool:
+    allow = context.bot_data["allow_partial_plan"]
+    assert isinstance(allow, bool)
+    return allow
+
+
 def load_dishes_for_plan(conn: Connection, plan: Plan) -> dict[int, Dish]:
     dish_ids = {entry.dish_id for entry in plan.entries}
     return {dish_id: repo.get_dish(conn, dish_id) for dish_id in dish_ids}

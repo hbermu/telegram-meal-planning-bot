@@ -20,6 +20,7 @@ CONFIG = Config(
     db_path=Path("/data/mealbot.db"),
     timezone="UTC",
     log_level="INFO",
+    allow_partial_plan=False,
 )
 
 

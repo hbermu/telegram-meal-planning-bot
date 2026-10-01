@@ -219,7 +219,7 @@ def test_deactivate_dish_keeps_ingredients_and_plan_entries(conn: sqlite3.Connec
         meal_type=MealType.LUNCH,
         ingredients=[DishIngredient(food_id=food_id, quantity=100.0)],
     )
-    week_start = current_week_start(date.today())
+    week_start = current_week_start(TODAY)
     repo.save_plan(
         conn,
         Plan(week_start=week_start, entries=(PlanEntry(day=0, slot=Slot.LUNCH, dish_id=dish.id),)),

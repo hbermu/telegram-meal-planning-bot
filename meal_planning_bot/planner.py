@@ -1,5 +1,5 @@
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from random import Random
@@ -32,6 +32,12 @@ class Unsatisfiable(Exception):
 
 class NodeCapReached(Exception):
     pass
+
+
+class SlotNotPlanned(Exception):
+    def __init__(self, slot: Slot) -> None:
+        self.slot = slot
+        super().__init__(f"slot {slot.value} is not part of this plan")
 
 
 @dataclass(frozen=True)
@@ -100,9 +106,21 @@ def _prune(
     return running + cheapest > high or running + dearest < low
 
 
-_POSITIONS: tuple[tuple[int, Slot], ...] = tuple(
-    (day, slot) for day in range(5) for slot in SLOT_ORDER
-)
+def _positions(slots: Sequence[Slot]) -> tuple[tuple[int, Slot], ...]:
+    ordered = [s for s in SLOT_ORDER if s in slots]
+    return tuple((day, slot) for day in range(5) for slot in ordered)
+
+
+def eligible_slots(catalogue: Sequence[Dish]) -> tuple[Slot, ...]:
+    active: dict[MealType, int] = defaultdict(int)
+    for dish in catalogue:
+        if dish.active:
+            active[dish.meal_type] += 1
+    return tuple(
+        slot
+        for slot in SLOT_ORDER
+        if active[SLOT_MEAL_TYPE[slot]] >= MIN_ACTIVE_DISHES[SLOT_MEAL_TYPE[slot]]
+    )
 
 
 def _seed_last_served(history: Sequence[ServedRecord]) -> dict[int, date]:
@@ -116,6 +134,7 @@ def _seed_last_served(history: Sequence[ServedRecord]) -> dict[int, date]:
 
 def _fill(
     index: int,
+    positions: Sequence[tuple[int, Slot]],
     pools: Mapping[Slot, Sequence[Dish]],
     week_start: date,
     settings: PlannerSettings,
@@ -129,17 +148,17 @@ def _fill(
     chosen: list[int | None],
     node_count: list[int],
 ) -> bool:
-    if index == len(_POSITIONS):
+    if index == len(positions):
         return True
 
-    day, slot = _POSITIONS[index]
+    day, slot = positions[index]
     day_date = week_start + timedelta(days=day)
-    remaining_today = [s for d, s in _POSITIONS[index + 1 :] if d == day]
+    remaining_today = [s for d, s in positions[index + 1 :] if d == day]
 
     # A new day starts a fresh per-day state; the previous day's state is
     # discarded rather than restored, since backtracking into an earlier
     # day re-enters through its own undo path, not through here.
-    if slot is SLOT_ORDER[0]:
+    if slot is positions[0][1]:
         assigned_today = []
         food_counts_today = {}
         running = 0
@@ -174,6 +193,7 @@ def _fill(
 
         if _fill(
             index + 1,
+            positions,
             pools,
             week_start,
             settings,
@@ -201,11 +221,19 @@ def _fill(
     return False
 
 
-def _pools_by_slot(catalogue: Sequence[Dish]) -> dict[Slot, list[Dish]]:
+def _pools_by_slot(catalogue: Sequence[Dish], slots: Sequence[Slot]) -> dict[Slot, list[Dish]]:
     return {
         slot: [d for d in catalogue if d.active and d.meal_type is SLOT_MEAL_TYPE[slot]]
-        for slot in SLOT_ORDER
+        for slot in slots
     }
+
+
+# A plan that does not cover every slot of the day cannot reach the daily calorie
+# target -- one lunch is not 2000 kcal -- so the lower bound is dropped and only
+# the ceiling is enforced. Expressed as a floor of zero rather than as a mode flag,
+# so every comparison downstream keeps its shape.
+def _floor(low: int, slots: Collection[Slot]) -> int:
+    return low if len(slots) == len(SLOT_ORDER) else 0
 
 
 def solve(
@@ -214,24 +242,43 @@ def solve(
     settings: PlannerSettings,
     week_start: date,
     rng: Random,
+    slots: Sequence[Slot],
 ) -> Plan:
-    pools = _pools_by_slot(catalogue)
-    for slot in SLOT_ORDER:
+    if not slots:
+        raise Unsatisfiable("no slot has enough active dishes")
+
+    pools = _pools_by_slot(catalogue, slots)
+    for slot in slots:
         if not pools[slot]:
             raise Unsatisfiable(f"no active dishes for slot {slot.value}")
 
     low, high = day_window(settings)
+    low = _floor(low, slots)
+    positions = _positions(slots)
     last_served = _seed_last_served(history)
-    chosen: list[int | None] = [None] * len(_POSITIONS)
+    chosen: list[int | None] = [None] * len(positions)
 
     solved = _fill(
-        0, pools, week_start, settings, low, high, rng, [], {}, 0, last_served, chosen, [0]
+        0,
+        positions,
+        pools,
+        week_start,
+        settings,
+        low,
+        high,
+        rng,
+        [],
+        {},
+        0,
+        last_served,
+        chosen,
+        [0],
     )
     if not solved:
         raise Unsatisfiable("no plan satisfies the constraints")
 
     entries = []
-    for index, (day, slot) in enumerate(_POSITIONS):
+    for index, (day, slot) in enumerate(positions):
         dish_id = chosen[index]
         assert dish_id is not None
         entries.append(PlanEntry(day=day, slot=slot, dish_id=dish_id))
@@ -259,6 +306,12 @@ def redraw_slot(
     slot: Slot,
     rng: Random,
 ) -> Plan:
+    # The plan itself records which slots it covers, so a partial plan needs no
+    # extra argument here: a slot it never drew cannot be re-drawn in isolation.
+    covered = {entry.slot for entry in plan.entries}
+    if slot not in covered:
+        raise SlotNotPlanned(slot)
+
     by_id = {d.id: d for d in catalogue}
     meal_type = SLOT_MEAL_TYPE[slot]
     pool = [d for d in catalogue if d.active and d.meal_type is meal_type]
@@ -268,6 +321,7 @@ def redraw_slot(
     other_entries = [e for e in plan.entries if not (e.day == day and e.slot == slot)]
     day_date = week_start + timedelta(days=day)
     low, high = day_window(settings)
+    low = _floor(low, covered)
 
     assigned_today = [by_id[e.dish_id] for e in other_entries if e.day == day]
     food_counts_today: dict[int, int] = defaultdict(int)
@@ -317,7 +371,9 @@ def _ladder(base: PlannerSettings) -> list[PlannerSettings]:
     ]
 
 
-def _diagnose(catalogue: Sequence[Dish], settings: PlannerSettings) -> Diagnosis:
+def _diagnose(
+    catalogue: Sequence[Dish], settings: PlannerSettings, slots: Sequence[Slot]
+) -> Diagnosis:
     active_by_type: dict[MealType, list[Dish]] = defaultdict(list)
     for d in catalogue:
         if d.active:
@@ -329,15 +385,14 @@ def _diagnose(catalogue: Sequence[Dish], settings: PlannerSettings) -> Diagnosis
         if len(active_by_type[meal_type]) < required
     )
 
-    pools: dict[Slot, list[Dish]] = {
-        slot: active_by_type[SLOT_MEAL_TYPE[slot]] for slot in SLOT_ORDER
-    }
+    pools: dict[Slot, list[Dish]] = {slot: active_by_type[SLOT_MEAL_TYPE[slot]] for slot in slots}
     low, high = day_window(settings)
-    if any(not pools[slot] for slot in SLOT_ORDER):
+    low = _floor(low, slots)
+    if not slots or any(not pools[slot] for slot in slots):
         reachable = False
     else:
-        cheapest = sum(min(d.kcal for d in pools[slot]) for slot in SLOT_ORDER)
-        dearest = sum(max(d.kcal for d in pools[slot]) for slot in SLOT_ORDER)
+        cheapest = sum(min(d.kcal for d in pools[slot]) for slot in slots)
+        dearest = sum(max(d.kcal for d in pools[slot]) for slot in slots)
         reachable = cheapest <= high and dearest >= low
 
     return Diagnosis(shortfalls, reachable)
@@ -349,11 +404,13 @@ def plan_week(
     settings: PlannerSettings,
     week_start: date,
     rng: Random,
+    allow_partial: bool,
 ) -> Plan:
+    slots = eligible_slots(catalogue) if allow_partial else SLOT_ORDER
     for step, attempt in enumerate(_ladder(settings)):
         try:
-            plan = solve(catalogue, history, attempt, week_start, rng)
+            plan = solve(catalogue, history, attempt, week_start, rng, slots)
         except (Unsatisfiable, NodeCapReached):
             continue
         return replace(plan, relaxation=step)
-    raise PlannerFailure(_diagnose(catalogue, settings))
+    raise PlannerFailure(_diagnose(catalogue, settings, slots))

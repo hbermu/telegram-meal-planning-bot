@@ -7,7 +7,7 @@ Each row points to a directory under `features/` containing one or more spec fil
 | [`storage/`](storage/overview.md) | SQLite file, migrations, and the single SQL layer | `schema.md` |
 | [`access-control/`](access-control/overview.md) | Telegram user allow-list, private-chat guard, and the single target group | — |
 | [`catalog/`](catalog/overview.md) | Foods and dishes, and the wizards that create them | `foods.md`, `dishes.md`, `nutrition.md`, `wizards.md` |
-| [`week-planner/`](week-planner/overview.md) | Random Monday-to-Friday menu under calorie and variety constraints | `constraints.md`, `relaxation.md` |
+| [`week-planner/`](week-planner/overview.md) | Random Monday-to-Friday menu under calorie and variety constraints | `constraints.md`, `relaxation.md`, `partial-plans.md` |
 | [`shopping-list/`](shopping-list/overview.md) | Aggregating a week's ingredients into one categorised list | — |
 | [`notifications/`](notifications/overview.md) | The Monday plan post and the weekday daily digest | — |
 | [`command-surface/`](command-surface/overview.md) | Every command, where it works, and how it fails | `settings.md` |

@@ -21,13 +21,15 @@ none
 
 1. The bot shall register its public command list with Telegram at startup.
 2. The bot shall answer `/start` and `/help` with the command list grouped as consultation, plan, catalogue, and configuration.
-3. When a user sends `/plan`, the bot shall reply with the current week's five days, each listing its five slots with dish name and effective calories, and the day's total; given the keyword `siguiente` it shall reply with next week's instead, naming the Monday that week starts on.
-4. When a user sends `/today`, the bot shall reply with the current local day's five slots.
+3. When a user sends `/plan`, the bot shall reply with the current week's five days, each listing the slots that week covers with dish name and effective calories, and the day's total; given the keyword `siguiente` it shall reply with next week's instead, naming the Monday that week starts on.
+3b. When a plan covers fewer than four meal types, the bot shall close that reply with one line naming the missing ones; see `../week-planner/partial-plans.md`.
+4. When a user sends `/today`, the bot shall reply with the slots the current week covers for the current local day.
 5. If `/today` is used on a Saturday or a Sunday, then the bot shall reply that the weekend is not planned.
 6. If `/plan` or `/today` is used and no plan exists for the current week, then the bot shall say so and shall suggest `/regenerate`.
 7. The `/swap` command shall accept a day as `lunes` through `viernes` or as 1–5, a slot as `desayuno`, `snack1`, `comida`, `snack2`, or `cena`, and an optional trailing `siguiente`.
 7b. The `/plan`, `/shopping` and `/regenerate` commands shall each accept an optional `siguiente` argument, and shall address the current week when it is absent.
 8. If `/swap` is given arguments it cannot parse, then the bot shall reply with the accepted forms and shall change nothing.
+8b. If `/swap` names a slot the stored plan does not cover, then the bot shall say so, shall point at `/newdish` and `/regenerate`, and shall change nothing.
 9. When a command that changes the plan succeeds, the bot shall reply in the chat it was called from, and shall not broadcast to the group.
 10. The bot shall reply to an unknown command with the `/help` text.
 11. Every reply shall be Spanish.
@@ -41,7 +43,7 @@ none
 | `/help` | both | allow-listed | Command list |
 | `/myid` | private | anyone | Caller's Telegram user ID |
 | `/plan [siguiente]` | both | allow-listed | This week's plan, or next week's |
-| `/today` | both | allow-listed | Today's five slots |
+| `/today` | both | allow-listed | Today's meals |
 | `/shopping [siguiente]` | both | allow-listed | That week's shopping list |
 | `/regenerate [siguiente]` | both | allow-listed | Re-draw that whole week |
 | `/swap <day> <slot> [siguiente]` | both | allow-listed | Re-draw one slot |
@@ -61,7 +63,7 @@ none
 
 ## Tests covering this
 
-- `tests/test_handlers.py` — `/today` on a weekend, `/plan` with no plan, `/swap` argument parsing in both Spanish words and numbers, unknown commands falling back to help
+- `tests/test_handlers.py` — `/today` on a weekend, `/plan` with no plan, `/swap` argument parsing in both Spanish words and numbers, `/swap` on a slot the plan does not cover, unknown commands falling back to help
 - `tests/test_formatting.py` — the plan message shows per-day totals and the help text lists every registered command
 - `tests/test_integration.py` — the assembled application against a fake transport and real `telegram.Update` objects, including that `build_application` accepts an injected bot and clock
 

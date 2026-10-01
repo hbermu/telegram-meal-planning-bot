@@ -1,6 +1,6 @@
 import asyncio
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from pathlib import Path
 from random import Random
@@ -12,7 +12,7 @@ import pytest
 from meal_planning_bot import repo, scheduler
 from meal_planning_bot.config import Config
 from meal_planning_bot.db import apply_pragmas, migrate
-from meal_planning_bot.models import Category, DishIngredient, MealType, Unit
+from meal_planning_bot.models import Category, DishIngredient, MealType, Slot, Unit
 from meal_planning_bot.planner import plan_week
 from meal_planning_bot.repo import planner_settings
 from meal_planning_bot.weeks import current_week_start, next_week_start
@@ -26,6 +26,7 @@ CONFIG = Config(
     db_path=Path("/tmp/unused.db"),
     timezone="America/New_York",  # a DST zone: the offset test below needs one
     log_level="INFO",
+    allow_partial_plan=False,
 )
 
 
@@ -54,7 +55,7 @@ def _seed_full_catalogue(conn: sqlite3.Connection) -> None:
 
 def _seed_plan(conn: sqlite3.Connection, week_start: date, seed: int = 1) -> None:
     catalogue = repo.list_dishes(conn, archived=False)
-    plan = plan_week(catalogue, [], planner_settings(conn), week_start, Random(seed))
+    plan = plan_week(catalogue, [], planner_settings(conn), week_start, Random(seed), False)
     repo.save_plan(conn, plan)
 
 
@@ -193,6 +194,21 @@ def test_reschedule_ignores_an_unrelated_key(conn: sqlite3.Connection) -> None:
     assert len(job_queue.registered) == before
 
 
+PARTIAL_CONFIG = replace(CONFIG, allow_partial_plan=True)
+
+
+def _seed_lunches_only(conn: sqlite3.Connection) -> None:
+    for i in range(6):
+        food_id = _seed_food(conn, name=f"lunch-food-{i}")
+        repo.create_dish(
+            conn,
+            name=f"lunch-{i}",
+            meal_type=MealType.LUNCH,
+            ingredients=[DishIngredient(food_id=food_id, quantity=100.0)],
+            kcal_override=400,
+        )
+
+
 # --- weekly_job ---------------------------------------------------------------
 
 
@@ -247,9 +263,16 @@ def test_weekly_job_passes_current_week_entries_as_history(
     captured: dict[str, Any] = {}
     real_plan_week = scheduler.plan_week
 
-    def _spy(catalogue: Any, history: Any, settings: Any, week_start: Any, rng: Any) -> Any:
+    def _spy(
+        catalogue: Any,
+        history: Any,
+        settings: Any,
+        week_start: Any,
+        rng: Any,
+        allow_partial: Any,
+    ) -> Any:
         captured["history"] = list(history)
-        return real_plan_week(catalogue, history, settings, week_start, rng)
+        return real_plan_week(catalogue, history, settings, week_start, rng, allow_partial)
 
     monkeypatch.setattr(scheduler, "plan_week", _spy)
 
@@ -393,3 +416,44 @@ def test_daily_job_reports_an_empty_catalogue_to_the_group(conn: sqlite3.Connect
     assert len(bot.sent) == 1
     assert bot.sent[0][0] == CONFIG.group_chat_id
     assert conn.execute("SELECT count(*) FROM plans").fetchone()[0] == 0
+
+
+# --- partial plans ------------------------------------------------------------
+
+
+def test_weekly_job_posts_a_partial_plan_instead_of_a_failure(
+    conn: sqlite3.Connection,
+) -> None:
+    _seed_lunches_only(conn)
+    bot = FakeBot()
+    today = date(2026, 9, 18)  # a Friday
+    _run(scheduler.weekly_job(bot, conn, PARTIAL_CONFIG, today, Random(7)))
+
+    saved = repo.get_plan(conn, next_week_start(today))
+    assert saved is not None
+    assert {e.slot for e in saved.entries} == {Slot.LUNCH}
+    assert "Plan de la semana que viene" in bot.sent[0][1]
+    assert "Sin planificar" in bot.sent[0][1]
+    assert len(bot.sent) >= 2  # plan, then the shopping list for the lunches alone
+
+
+def test_weekly_job_still_reports_the_failure_with_partial_plans_off(
+    conn: sqlite3.Connection,
+) -> None:
+    _seed_lunches_only(conn)
+    bot = FakeBot()
+    today = date(2026, 9, 18)
+    _run(scheduler.weekly_job(bot, conn, CONFIG, today, Random(7)))
+
+    assert repo.get_plan(conn, next_week_start(today)) is None
+    assert len(bot.sent) == 1
+    assert "Desayuno" in bot.sent[0][1]
+
+
+def test_startup_catch_up_draws_a_partial_week(conn: sqlite3.Connection) -> None:
+    _seed_lunches_only(conn)
+    today = date(2026, 9, 16)  # a Wednesday
+    generated = scheduler.startup_catch_up(conn, PARTIAL_CONFIG, today)
+
+    assert [p.week_start for p in generated] == [current_week_start(today)]
+    assert {e.slot for p in generated for e in p.entries} == {Slot.LUNCH}

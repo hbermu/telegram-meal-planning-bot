@@ -6,7 +6,7 @@ The bot speaks Spanish. The code, the documentation, and the commit history are 
 
 ## Features
 
-- Monday-to-Friday plans with five slots a day: breakfast, two snacks, lunch, dinner
+- Monday-to-Friday plans with five slots a day: breakfast, two snacks, lunch, dinner — or only the meal types the catalogue can support, if you allow partial plans
 - A daily calorie target with a configurable tolerance
 - Variety rules: no food in more than N dishes a day, and a per-meal-type cooldown before a dish can come back
 - A relaxation ladder that loosens the rules in a fixed order when the catalogue is too small, and says what it loosened
@@ -40,6 +40,7 @@ All configuration is via environment variables. Required variables cause a start
 |----------|---------|-------------|
 | `MEALBOT_DB_PATH` | `/data/mealbot.db` | SQLite file. Must be local storage: SQLite's locking is unreliable over NFS and SMB. |
 | `MEALBOT_TIMEZONE` | `UTC` | IANA zone for every scheduled time. Set it: the posting times mean nothing without it. |
+| `MEALBOT_ALLOW_PARTIAL_PLAN` | `false` | Plan only the meal types the catalogue can support, instead of refusing to plan until all four are stocked. Accepts `true`/`false`, `1`/`0`, `yes`/`no`. |
 | `MEALBOT_LOG_LEVEL` | `INFO` | Python logging level |
 
 Everything else — the calorie target, the tolerance, the repetition limits, the cooldowns, the post times — lives in the database and is changed with `/set` from a private chat. Run `/settings` to see the current values.

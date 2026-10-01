@@ -19,8 +19,10 @@ from meal_planning_bot.formatting import (
     DISH_NOT_FOUND_MESSAGE,
     NO_PLAN_MESSAGE,
     PAGINATION_NEXT_BUTTON,
+    PARTIAL_PLAN_NOTICE,
     RESTORE_AMBIGUOUS_PROMPT,
     RESTORE_NOT_FOUND_MESSAGE,
+    SLOT_NOT_PLANNED_MESSAGE,
     SWAP_USAGE_MESSAGE,
     WEEKEND_MESSAGE,
     render_help,
@@ -103,11 +105,20 @@ class FakeContext:
 
 
 def _context(
-    conn: sqlite3.Connection, today: date, args: list[str] | None = None, seed: int = 42
+    conn: sqlite3.Connection,
+    today: date,
+    args: list[str] | None = None,
+    seed: int = 42,
+    allow_partial_plan: bool = False,
 ) -> FakeContext:
     return FakeContext(
         args=args or [],
-        bot_data={"conn": conn, "clock": lambda: today, "rng": random.Random(seed)},
+        bot_data={
+            "conn": conn,
+            "clock": lambda: today,
+            "rng": random.Random(seed),
+            "allow_partial_plan": allow_partial_plan,
+        },
     )
 
 
@@ -152,7 +163,7 @@ def _seed_full_catalogue(conn: sqlite3.Connection) -> None:
 def _seed_plan(conn: sqlite3.Connection, week_start: date) -> None:
     _seed_full_catalogue(conn)
     catalogue = repo.list_dishes(conn, archived=False)
-    plan = plan_week(catalogue, [], planner_settings(conn), week_start, random.Random(1))
+    plan = plan_week(catalogue, [], planner_settings(conn), week_start, random.Random(1), False)
     repo.save_plan(conn, plan)
 
 
@@ -211,8 +222,8 @@ def test_plan_siguiente_shows_next_week_and_leaves_current_reply_different(
     _seed_full_catalogue(conn)
     catalogue = repo.list_dishes(conn, archived=False)
     settings = planner_settings(conn)
-    repo.save_plan(conn, plan_week(catalogue, [], settings, current_start, random.Random(2)))
-    repo.save_plan(conn, plan_week(catalogue, [], settings, next_start, random.Random(4)))
+    repo.save_plan(conn, plan_week(catalogue, [], settings, current_start, random.Random(2), False))
+    repo.save_plan(conn, plan_week(catalogue, [], settings, next_start, random.Random(4), False))
 
     current_update = _update()
     _run(cmd_plan(current_update, _context(conn, current_start)))
@@ -308,7 +319,7 @@ def test_shopping_splits_into_several_messages_when_long(conn: sqlite3.Connectio
             )
 
     catalogue = repo.list_dishes(conn, archived=False)
-    plan = plan_week(catalogue, [], planner_settings(conn), monday, random.Random(3))
+    plan = plan_week(catalogue, [], planner_settings(conn), monday, random.Random(3), False)
     repo.save_plan(conn, plan)
 
     update = _update()
@@ -435,6 +446,38 @@ def test_regenerate_reports_diagnosis_and_saves_nothing_on_failure(
     assert repo.get_plan(conn, monday) is None
 
 
+def test_regenerate_in_partial_mode_plans_the_meal_types_it_can(
+    conn: sqlite3.Connection,
+) -> None:
+    monday = date(2026, 9, 21)
+    for i in range(6):
+        _seed_dish(conn, MealType.LUNCH, i)
+
+    update = _update()
+    _run(cmd_regenerate(update, _context(conn, monday, allow_partial_plan=True)))
+
+    plan = repo.get_plan(conn, monday)
+    assert plan is not None
+    assert {e.slot for e in plan.entries} == {Slot.LUNCH}
+    assert PARTIAL_PLAN_NOTICE.format(meals="desayuno, snack y cena") in update.replies[0]
+
+
+def test_swap_on_a_slot_the_partial_plan_never_drew_changes_nothing(
+    conn: sqlite3.Connection,
+) -> None:
+    monday = date(2026, 9, 21)
+    for i in range(6):
+        _seed_dish(conn, MealType.LUNCH, i)
+    _run(cmd_regenerate(_update(), _context(conn, monday, allow_partial_plan=True)))
+    before = repo.get_plan(conn, monday)
+
+    update = _update()
+    _run(cmd_swap(update, _context(conn, monday, ["lunes", "cena"], allow_partial_plan=True)))
+
+    assert update.replies == [SLOT_NOT_PLANNED_MESSAGE]
+    assert repo.get_plan(conn, monday) == before
+
+
 def test_regenerate_rejects_unparseable_argument(conn: sqlite3.Connection) -> None:
     update = _update()
     _run(cmd_regenerate(update, _context(conn, date(2026, 9, 21), ["martes"])))
@@ -450,7 +493,7 @@ def test_regenerate_siguiente_draws_next_week_leaving_current_untouched(
     _seed_full_catalogue(conn)
     catalogue = repo.list_dishes(conn, archived=False)
     settings = planner_settings(conn)
-    current_plan = plan_week(catalogue, [], settings, current_start, random.Random(9))
+    current_plan = plan_week(catalogue, [], settings, current_start, random.Random(9), False)
     repo.save_plan(conn, current_plan)
 
     update = _update()
@@ -923,6 +966,7 @@ TEST_CONFIG = Config(
     db_path=Path("/tmp/unused-meal_planning_bot-test.db"),
     timezone="UTC",
     log_level="INFO",
+    allow_partial_plan=False,
 )
 
 

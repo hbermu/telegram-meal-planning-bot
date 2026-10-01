@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from meal_planning_bot import repo
 from meal_planning_bot.formatting import (
     NO_PLAN_MESSAGE,
+    SLOT_NOT_PLANNED_MESSAGE,
     SWAP_USAGE_MESSAGE,
     UNKNOWN_ARGUMENT_MESSAGE,
     WEEKEND_MESSAGE,
@@ -17,6 +18,7 @@ from meal_planning_bot.formatting import (
 from meal_planning_bot.handlers import (
     ContextLike,
     UpdateLike,
+    get_allow_partial_plan,
     get_clock,
     get_conn,
     get_rng,
@@ -24,7 +26,13 @@ from meal_planning_bot.handlers import (
     load_dishes_for_plan,
 )
 from meal_planning_bot.models import Slot
-from meal_planning_bot.planner import PlannerFailure, Unsatisfiable, plan_week, redraw_slot
+from meal_planning_bot.planner import (
+    PlannerFailure,
+    SlotNotPlanned,
+    Unsatisfiable,
+    plan_week,
+    redraw_slot,
+)
 from meal_planning_bot.shopping import aggregate
 from meal_planning_bot.weeks import (
     NEXT_KEYWORD,
@@ -146,7 +154,14 @@ async def cmd_regenerate(update: UpdateLike, context: ContextLike) -> None:
     history = repo.scheduled_history(conn, today)
     settings = repo.planner_settings(conn)
     try:
-        plan = plan_week(catalogue, history, settings, week_start, get_rng(context))
+        plan = plan_week(
+            catalogue,
+            history,
+            settings,
+            week_start,
+            get_rng(context),
+            get_allow_partial_plan(context),
+        )
     except PlannerFailure as exc:
         await update.reply_text(render_planner_failure(exc.diagnosis))
         return
@@ -180,6 +195,9 @@ async def cmd_swap(update: UpdateLike, context: ContextLike) -> None:
         new_plan = redraw_slot(
             plan, catalogue, history, settings, week_start, day, slot, get_rng(context)
         )
+    except SlotNotPlanned:
+        await update.reply_text(SLOT_NOT_PLANNED_MESSAGE)
+        return
     except Unsatisfiable:
         await update.reply_text(render_swap_unsatisfiable())
         return
