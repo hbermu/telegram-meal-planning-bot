@@ -1,5 +1,5 @@
 from collections import defaultdict
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from random import Random
@@ -159,6 +159,19 @@ def _prune(
 def _positions(slots: Sequence[Slot]) -> tuple[tuple[int, Slot], ...]:
     ordered = [s for s in SLOT_ORDER if s in slots]
     return tuple((day, slot) for day in range(5) for slot in ordered)
+
+
+def covered_slots(plan: Plan) -> set[Slot]:
+    """The slots the draw plans. A drawn slot holds an entry on every day; one
+    a user pinned by hand on a slot the draw skips holds it only on that day."""
+    days: dict[Slot, set[int]] = defaultdict(set)
+    for entry in plan.entries:
+        days[entry.slot].add(entry.day)
+    return {slot for slot, held in days.items() if len(held) == 5}
+
+
+def _ordered(entries: Iterable[PlanEntry]) -> tuple[PlanEntry, ...]:
+    return tuple(sorted(entries, key=lambda e: (e.day, SLOT_ORDER.index(e.slot))))
 
 
 def eligible_slots(catalogue: Sequence[Dish]) -> tuple[Slot, ...]:
@@ -440,9 +453,14 @@ def redraw_slot(
 ) -> Plan:
     # The plan itself records which slots it covers, so a partial plan needs no
     # extra argument here: a slot it never drew cannot be re-drawn in isolation.
-    covered = {entry.slot for entry in plan.entries}
+    # A hand-picked entry there is released the way a pin always is, which on a
+    # slot nobody draws leaves the slot empty.
+    covered = covered_slots(plan)
     if slot not in covered:
-        raise SlotNotPlanned(slot)
+        kept = [e for e in plan.entries if not (e.day == day and e.slot == slot)]
+        if len(kept) == len(plan.entries):
+            raise SlotNotPlanned(slot)
+        return replace(plan, entries=tuple(kept))
 
     by_id = {d.id: d for d in catalogue}
     meal_type = SLOT_MEAL_TYPE[slot]
@@ -479,12 +497,7 @@ def redraw_slot(
         total = running_today + dish.kcal
         if not (low <= total <= high):
             continue
-        new_entries = tuple(
-            sorted(
-                (*other_entries, PlanEntry(day=day, slot=slot, dish_id=dish.id)),
-                key=lambda e: (e.day, SLOT_ORDER.index(e.slot)),
-            )
-        )
+        new_entries = _ordered((*other_entries, PlanEntry(day=day, slot=slot, dish_id=dish.id)))
         return replace(plan, entries=new_entries)
 
     raise Unsatisfiable(f"no candidate fits day {day} slot {slot.value}")
@@ -537,14 +550,16 @@ def _diagnose(
 
 
 def apply_overrides(plan: Plan, overrides: Sequence[PlanEntry]) -> Plan:
-    """Lay the hand-picked entries over a plan that was drawn without them.
-    The last resort when no relaxation step can hold them: an override is a
-    decision, not a request, so it is never dropped for being inconvenient."""
+    """Lay the hand-picked entries over a plan that was drawn without them: in
+    place of the drawn entry where there is one, and added to the day on a slot
+    the draw does not cover. Also the last resort when no relaxation step can
+    hold them: an override is a decision, not a request, so it is never dropped
+    for being inconvenient."""
     held = {(entry.day, entry.slot): entry for entry in overrides}
-    # Substituting into the drawn entries is what keeps an override off a slot
-    # the plan does not cover: there is nothing there to substitute.
-    entries = tuple(held.get((entry.day, entry.slot), entry) for entry in plan.entries)
-    return replace(plan, entries=entries)
+    drawn = {(entry.day, entry.slot) for entry in plan.entries}
+    entries = [held.get((entry.day, entry.slot), entry) for entry in plan.entries]
+    entries.extend(entry for position, entry in held.items() if position not in drawn)
+    return replace(plan, entries=_ordered(entries))
 
 
 def days_outside_window(
@@ -552,9 +567,8 @@ def days_outside_window(
 ) -> tuple[int, ...]:
     """The days whose calories no longer land inside the window. A hand-picked
     slot can push a day out of it, and the bot says so rather than refusing."""
-    covered = {entry.slot for entry in plan.entries}
     low, high = day_window(settings)
-    low = _floor(low, covered)
+    low = _floor(low, covered_slots(plan))
     outside = []
     for day in range(5):
         today = [e for e in plan.entries if e.day == day]
@@ -581,16 +595,18 @@ def plan_week(
     overrides: Sequence[PlanEntry] = (),
 ) -> Plan:
     slots = eligible_slots(catalogue) if allow_partial else SLOT_ORDER
-    # An override on a slot this draw is not covering has nowhere to go; the
-    # commands refuse one, and a catalogue that shrank can leave one behind.
+    # An override on a slot this draw does not cover is no part of the search:
+    # it is laid on its day afterwards, so the draw neither charges the day for
+    # it nor drops it.
     held = [entry for entry in overrides if entry.slot in slots]
+    beside = [entry for entry in overrides if entry.slot not in slots]
     fixed = pin(held, catalogue)
     for step, attempt in enumerate(_ladder(settings)):
         try:
             plan = solve(catalogue, history, attempt, week_start, rng, slots, fixed)
         except (Unsatisfiable, NodeCapReached):
             continue
-        return replace(plan, relaxation=step)
+        return apply_overrides(replace(plan, relaxation=step), beside)
 
     if held:
         # No step could draw a week around the hand-picked slots. They still
@@ -598,7 +614,7 @@ def plan_week(
         # they sit in may then miss its calorie window, which the bot reports
         # rather than treating as a reason to refuse.
         return apply_overrides(
-            plan_week(catalogue, history, settings, week_start, rng, allow_partial), held
+            plan_week(catalogue, history, settings, week_start, rng, allow_partial), overrides
         )
 
     raise PlannerFailure(_diagnose(catalogue, settings, slots))

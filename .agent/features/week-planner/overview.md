@@ -36,7 +36,7 @@
 10d. The planner shall hold every slot of that week a user chose by hand and shall draw the rest around it; see `overrides.md`.
 11. When one slot is re-drawn, the planner shall hold every other assignment of that plan fixed and shall apply the same hard constraints to the candidate.
 12. If re-drawing one slot has no valid candidate, then the bot shall say so and shall leave the existing assignment in place.
-13. If re-drawing names a slot the stored plan does not cover, then the bot shall say so and shall change nothing; see `partial-plans.md`.
+13. If re-drawing names a slot the stored plan does not cover and that day holds nothing there, then the bot shall say so and shall change nothing; see `partial-plans.md`.
 
 ## Commands
 

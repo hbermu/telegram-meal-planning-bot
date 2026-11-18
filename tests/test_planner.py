@@ -25,6 +25,8 @@ from meal_planning_bot.planner import (
     Unsatisfiable,
     _candidate_ok,
     _ladder,
+    apply_overrides,
+    covered_slots,
     day_window,
     days_outside_window,
     eligible_slots,
@@ -634,6 +636,55 @@ def test_redrawing_a_pinned_slot_releases_it() -> None:
     entry = next(e for e in redrawn.entries if e.day == 2 and e.slot is Slot.DINNER)
     assert entry.override is False
     assert entry.note is None
+
+
+def _lunch_only_with_one_breakfast() -> tuple[list[Dish], PlanEntry]:
+    # One breakfast is far below what a week of breakfasts needs, so a partial
+    # draw leaves the slot out and the pin is the only breakfast in the week.
+    cat = [*_only({MealType.LUNCH}), dish(90, MealType.BREAKFAST, 300, foods=[90])]
+    held = PlanEntry(day=1, slot=Slot.BREAKFAST, dish_id=90, override=True)
+    return cat, held
+
+
+def test_a_pin_on_a_slot_the_draw_skips_is_added_to_its_day() -> None:
+    cat, held = _lunch_only_with_one_breakfast()
+
+    plan = plan_week(cat, [], DEFAULT_SETTINGS, WEEK_START, Random(1), True, [held])
+
+    assert held in plan.entries
+    assert len(plan.entries) == 6
+    assert covered_slots(plan) == {Slot.LUNCH}
+    tuesday = [e.slot for e in plan.entries if e.day == 1]
+    assert tuesday == [Slot.BREAKFAST, Slot.LUNCH]
+
+
+def test_apply_overrides_replaces_a_drawn_entry_and_adds_the_rest() -> None:
+    cat, held = _lunch_only_with_one_breakfast()
+    plan = plan_week(cat, [], DEFAULT_SETTINGS, WEEK_START, Random(1), True)
+    note = PlanEntry(day=4, slot=Slot.LUNCH, dish_id=None, note="Fuera", override=True)
+
+    updated = apply_overrides(plan, [held, note])
+
+    assert held in updated.entries
+    assert note in updated.entries
+    assert len(updated.entries) == 6
+    assert covered_slots(updated) == {Slot.LUNCH}
+
+
+def test_redrawing_a_pin_on_a_slot_the_draw_skips_removes_it() -> None:
+    cat, held = _lunch_only_with_one_breakfast()
+    plan = plan_week(cat, [], DEFAULT_SETTINGS, WEEK_START, Random(1), True, [held])
+
+    redrawn = redraw_slot(
+        plan, cat, [], DEFAULT_SETTINGS, WEEK_START, 1, Slot.BREAKFAST, Random(7)
+    )
+
+    assert held not in redrawn.entries
+    assert len(redrawn.entries) == 5
+    with pytest.raises(SlotNotPlanned):
+        redraw_slot(
+            redrawn, cat, [], DEFAULT_SETTINGS, WEEK_START, 1, Slot.BREAKFAST, Random(7)
+        )
 
 
 def test_redrawing_a_slot_beside_a_note_ignores_the_floor() -> None:

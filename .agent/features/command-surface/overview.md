@@ -35,7 +35,7 @@ none
 7b. The `/plan`, `/shopping` and `/regenerate` commands shall each accept an optional `siguiente` argument, and shall address the current week when it is absent.
 7c. The `/override` command shall take `siguiente` as its first argument rather than its last, shall accept `hoy` and `mañana` as days, and with no arguments shall ask with buttons instead; see `../week-planner/overrides.md`.
 8. If `/swap` is given arguments it cannot parse, then the bot shall reply with the accepted forms and shall change nothing.
-8b. If `/swap` names a slot the stored plan does not cover, then the bot shall say so, shall point at `/newdish` and `/regenerate`, and shall change nothing.
+8b. If `/swap` names a slot the stored plan does not cover and holds nothing there that day, then the bot shall say so, shall point at `/newdish` and `/regenerate`, and shall change nothing; see `../week-planner/partial-plans.md`.
 9. When a command that changes the plan succeeds, the bot shall reply in the chat it was called from, and shall not broadcast to the group.
 9b. Every reply shall be rendered onto that chat's single anchored message, and the command that asked for it shall be deleted; see `navigation.md`.
 10. The bot shall reply to an unknown command with the `/help` text.

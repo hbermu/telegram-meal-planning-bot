@@ -73,6 +73,7 @@ from meal_planning_bot.handlers.plan import (
 )
 from meal_planning_bot.handlers.wizards import cmd_newdish
 from meal_planning_bot.models import (
+    SLOT_ORDER,
     Category,
     DishIngredient,
     MealType,
@@ -1259,16 +1260,51 @@ def test_override_says_so_when_the_name_matches_nothing(conn: sqlite3.Connection
     assert all(e.note is None for e in stored.entries)
 
 
-def test_override_needs_a_plan_and_a_covered_slot(conn: sqlite3.Connection) -> None:
+def test_override_needs_a_plan(conn: sqlite3.Connection) -> None:
     empty = _override(conn, ["jueves", "cena", "fuera"])
     assert empty.replies == [NO_PLAN_MESSAGE]
 
+
+def test_override_fills_a_slot_the_plan_does_not_cover(conn: sqlite3.Connection) -> None:
+    for i in range(6):
+        _seed_dish(conn, MealType.LUNCH, i)
+    _seed_dish(conn, MealType.BREAKFAST, 0)
+    _run(cmd_regenerate(_update(), _context(conn, TUESDAY, allow_partial_plan=True)))
+
+    update = _override(conn, ["jueves", "desayuno", "breakfast-0"])
+
+    assert "Desayuno: breakfast-0 (400 kcal)" in update.replies[0]
+    assert "Total: 800 kcal" in update.replies[0]
+    stored = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert stored is not None
+    assert [e.slot for e in stored.entries if e.day == 3] == [Slot.BREAKFAST, Slot.LUNCH]
+
+    # The draw still does not plan breakfasts, and says so; re-drawing keeps
+    # the hand-picked one, and /swap on it takes it back off.
+    plan = _update()
+    _run(cmd_plan(plan, _context(conn, TUESDAY)))
+    assert PARTIAL_PLAN_NOTICE.format(meals="desayuno, snack y cena") in plan.replies[0]
+    _run(cmd_regenerate(_update(), _context(conn, TUESDAY, allow_partial_plan=True)))
+    regenerated = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert regenerated is not None
+    assert any(e.slot is Slot.BREAKFAST for e in regenerated.entries)
+    _run(cmd_swap(_update(), _context(conn, TUESDAY, ["jueves", "desayuno"])))
+    swapped = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert swapped is not None
+    assert all(e.slot is Slot.LUNCH for e in swapped.entries)
+
+
+def test_the_slot_buttons_offer_every_slot_even_when_the_plan_skips_some(
+    conn: sqlite3.Connection,
+) -> None:
     for i in range(6):
         _seed_dish(conn, MealType.LUNCH, i)
     _run(cmd_regenerate(_update(), _context(conn, TUESDAY, allow_partial_plan=True)))
 
-    uncovered = _override(conn, ["jueves", "desayuno", "fuera"])
-    assert uncovered.replies == [SLOT_NOT_PLANNED_MESSAGE]
+    slots = _override_tap(conn, "ov:slot:now:3")
+
+    offered = [data.split(":")[4] for row in slots.markups[0][:-1] for _label, data in row]
+    assert offered == [slot.value for slot in SLOT_ORDER]
 
 
 def test_override_warns_when_the_day_leaves_the_calorie_window(

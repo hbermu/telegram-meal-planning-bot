@@ -16,7 +16,7 @@ from meal_planning_bot.models import (
     Slot,
     Unit,
 )
-from meal_planning_bot.planner import Diagnosis
+from meal_planning_bot.planner import Diagnosis, covered_slots
 from meal_planning_bot.shopping import ShoppingGroup, ShoppingLine
 
 MESSAGE_LIMIT = 4000
@@ -133,7 +133,7 @@ def _join_es(parts: Sequence[str]) -> str:
 # The meal type, not the slot, is what names the gap: both snack slots are filled
 # from one pool, and a meal type is what someone fixes with /newdish.
 def _missing_meal_types(plan: Plan) -> tuple[MealType, ...]:
-    covered = {SLOT_MEAL_TYPE[entry.slot] for entry in plan.entries}
+    covered = {SLOT_MEAL_TYPE[slot] for slot in covered_slots(plan)}
     return tuple(meal_type for meal_type in MealType if meal_type not in covered)
 
 

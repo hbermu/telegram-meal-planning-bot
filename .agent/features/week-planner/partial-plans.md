@@ -25,11 +25,11 @@
 7. When a plan covers fewer than five slots, the planner shall enforce only the upper bound of the day's calorie window and shall drop the lower bound, because a day that is missing meals cannot reach `daily_kcal_target`.
 8. A partial plan shall satisfy every other hard constraint in `constraints.md` unchanged, and shall use the relaxation ladder in `relaxation.md` unchanged.
 9. If no meal type has enough active dishes, then the planner shall fail with the same diagnosis it gives in full mode, naming every meal type that is short.
-10. When rendering a plan, the bot shall omit the line of every slot the plan does not cover, and shall total only the slots it does cover.
+10. When rendering a plan, the bot shall omit the line of every slot the plan does not cover and holds nothing for that day, and shall total the slots that day holds; a slot pinned by hand is shown and counted; see `overrides.md`.
 11. When a plan covers fewer than four meal types, the bot shall close the weekly plan message with one line naming the missing meal types, so a reader knows the gap is a thin catalogue and not a fault.
 12. The bot shall not add that line to the daily message, which covers one day and is read as a reminder rather than as a report.
-13. If `/swap` names a slot the stored plan does not cover, then the bot shall say so, shall point at `/newdish` and `/regenerate`, and shall change nothing.
-14. The planner shall read which slots a stored plan covers from the plan's own entries, so re-drawing one slot needs no knowledge of the switch.
+13. If `/swap` names a slot the stored plan does not cover and that day holds nothing there, then the bot shall say so, shall point at `/newdish` and `/regenerate`, and shall change nothing; an entry pinned there by hand is removed instead, see `overrides.md`.
+14. The planner shall read which slots a stored plan covers from the plan's own entries — a slot is covered when it holds an entry on all five days — so re-drawing one slot needs no knowledge of the switch, and a slot pinned by hand on some days is not mistaken for a drawn one.
 15. A plan already stored shall not change when the switch changes; `/regenerate` is what redraws a week under the current setting.
 
 ## Tests covering this

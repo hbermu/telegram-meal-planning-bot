@@ -24,7 +24,6 @@ from meal_planning_bot.formatting import (
     PAGINATION_NEXT_BUTTON,
     PAGINATION_PREV_BUTTON,
     SLOT_LABELS,
-    SLOT_NOT_PLANNED_MESSAGE,
     TODAY_BUTTON,
     render_day,
     render_override_custom_prompt,
@@ -166,10 +165,6 @@ async def cmd_override(update: UpdateLike, context: OverrideContextLike) -> None
     if plan is None:
         await update.reply_text(NO_PLAN_MESSAGE)
         return
-    if choice.slot not in {entry.slot for entry in plan.entries}:
-        await update.reply_text(SLOT_NOT_PLANNED_MESSAGE)
-        return
-
     if choice.note is not None:
         await _apply(
             update,
@@ -220,13 +215,9 @@ def _day_keyboard(is_next: bool, today: date) -> Keyboard:
     return (*rows, keyboards.back_row(f"menu:plan:{week}"))
 
 
-def _slot_keyboard(is_next: bool, day: int, covered: set[Slot]) -> Keyboard:
+def _slot_keyboard(is_next: bool, day: int) -> Keyboard:
     week = keyboards.week_token(is_next)
-    buttons = [
-        (SLOT_LABELS[slot], f"ov:pick:{week}:{day}:{slot.value}:1")
-        for slot in SLOT_ORDER
-        if slot in covered
-    ]
+    buttons = [(SLOT_LABELS[slot], f"ov:pick:{week}:{day}:{slot.value}:1") for slot in SLOT_ORDER]
     rows = [tuple(buttons[i : i + 2]) for i in range(0, len(buttons), 2)]
     return (*rows, keyboards.back_row(f"ov:day:{week}"))
 
@@ -292,18 +283,14 @@ async def on_override_callback(update: CallbackUpdateLike, context: OverrideCont
         await update.reply_text(OVERRIDE_DAY_PROMPT, reply_markup=_day_keyboard(is_next, today))
         return
 
-    covered = {entry.slot for entry in plan.entries}
     if action == "slot":
         await update.reply_text(
             OVERRIDE_SLOT_PROMPT.format(day=DAY_LABELS[day]),
-            reply_markup=_slot_keyboard(is_next, day, covered),
+            reply_markup=_slot_keyboard(is_next, day),
         )
         return
 
     assert slot is not None
-    if slot not in covered:
-        await update.reply_text(SLOT_NOT_PLANNED_MESSAGE, reply_markup=_back_to_plan(is_next))
-        return
 
     if action == "pick":
         meal_type = SLOT_MEAL_TYPE[slot]
@@ -346,11 +333,6 @@ async def on_override_text(update: UpdateLike, context: OverrideContextLike, tex
     plan = _stored_plan(context, pending.is_next)
     if plan is None:
         await update.reply_text(NO_PLAN_MESSAGE, reply_markup=_back_to_plan(pending.is_next))
-        return True
-    if pending.slot not in {entry.slot for entry in plan.entries}:
-        await update.reply_text(
-            SLOT_NOT_PLANNED_MESSAGE, reply_markup=_back_to_plan(pending.is_next)
-        )
         return True
     entry = PlanEntry(
         day=pending.day, slot=pending.slot, dish_id=None, note=text.strip(), override=True
