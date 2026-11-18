@@ -137,8 +137,11 @@ async def cmd_shopping(update: UpdateLike, context: ContextLike) -> None:
 
     dishes = load_dishes_for_plan(conn, plan)
     foods = load_all_foods(conn)
+    # A shopping list is what someone reads in the shop, and it may run to
+    # several messages: it is content, not a menu, so it stays in the chat and
+    # leaves the anchor showing whatever it was showing.
     for message in render_shopping(aggregate(plan, dishes, foods)):
-        await update.reply_text(message)
+        await update.send_text(message)
 
 
 async def cmd_regenerate(update: UpdateLike, context: ContextLike) -> None:

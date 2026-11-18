@@ -36,6 +36,7 @@
 11d. While `MEALBOT_ALLOW_PARTIAL_PLAN` is true, a catalogue short of whole meal types shall yield a partial plan rather than that diagnosis, and the diagnosis shall be reserved for a catalogue that cannot fill even one meal type.
 12. When `weekly_post_weekday`, `weekly_post_time` or `daily_post_time` is changed through `/set`, the scheduler shall re-register the affected job without a restart.
 13. The bot shall never post to any chat other than the configured group from a scheduled job.
+13b. A scheduled post shall be a message of its own: it shall never become the group's anchored message, and shall never be edited or deleted; see `../command-surface/navigation.md`.
 14. When generating next week's plan, the bot shall pass the current week's stored entries as history, so the cooldown spans the boundary between the two weeks.
 
 ## Tests covering this

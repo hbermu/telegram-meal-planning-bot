@@ -26,6 +26,7 @@ none
 9. If no plan exists for the current week, then `/shopping` shall say so and shall suggest `/regenerate`.
 10. When a plan is regenerated or a slot is swapped, the next `/shopping` shall reflect the change, because the list is derived and never stored.
 11. If the rendered list exceeds the Telegram message length limit, then the bot shall split it at a category boundary across several messages.
+12. The list shall be posted as messages of its own rather than rendered onto the chat's anchored message, because it is read in the shop and may run to several messages; see `../command-surface/navigation.md`.
 
 ## Commands
 

@@ -219,38 +219,38 @@ async def on_catalog_callback(update: CallbackUpdateLike, context: ContextLike) 
         dishes = _sorted_dishes(conn, action.archived)
         text = render_dishes_page(dishes, page=action.page)
         keyboard = _page_keyboard("dishes", action.page, action.archived, len(dishes))
-        await query.edit_message_text(text, reply_markup=keyboard)
+        await update.reply_text(text, reply_markup=keyboard)
         return
 
     if isinstance(action, FoodsPageCallback):
         page_foods = _sorted_foods(conn, action.archived)
         text = render_foods_page(page_foods, page=action.page)
         keyboard = _page_keyboard("foods", action.page, action.archived, len(page_foods))
-        await query.edit_message_text(text, reply_markup=keyboard)
+        await update.reply_text(text, reply_markup=keyboard)
         return
 
     if isinstance(action, DishCallback):
         try:
             dish = repo.get_dish(conn, action.dish_id)
         except LookupError:
-            await query.edit_message_text(DISH_NOT_FOUND_MESSAGE)
+            await update.reply_text(DISH_NOT_FOUND_MESSAGE)
             return
         foods = load_all_foods(conn)
-        await query.edit_message_text(render_dish(dish, foods))
+        await update.reply_text(render_dish(dish, foods))
         return
 
     if action.kind == "dish":
         try:
             restored_dish = repo.reactivate_dish(conn, action.item_id)
         except LookupError:
-            await query.edit_message_text(RESTORE_NOT_FOUND_MESSAGE)
+            await update.reply_text(RESTORE_NOT_FOUND_MESSAGE)
             return
-        await query.edit_message_text(render_restored_dish(restored_dish))
+        await update.reply_text(render_restored_dish(restored_dish))
         return
 
     try:
         restored_food = repo.reactivate_food(conn, action.item_id)
     except LookupError:
-        await query.edit_message_text(FOOD_NOT_FOUND_MESSAGE)
+        await update.reply_text(FOOD_NOT_FOUND_MESSAGE)
         return
-    await query.edit_message_text(render_restored_food(restored_food))
+    await update.reply_text(render_restored_food(restored_food))

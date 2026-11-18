@@ -73,28 +73,31 @@ class FakeUser:
 class FakeCallbackQuery:
     data: str | None
     answered: bool = False
-    edits: list[str] = field(default_factory=list)
-    edit_markups: list[Any] = field(default_factory=list)
 
     async def answer(self) -> None:
         self.answered = True
 
-    async def edit_message_text(self, text: str, reply_markup: Any = None) -> None:
-        self.edits.append(text)
-        self.edit_markups.append(reply_markup)
-
 
 @dataclass
 class FakeUpdate:
+    """Records what a handler asked to say. Whether that became an edit of the
+    chat's anchored message, a new message, or the deletion of the command that
+    asked for it is `anchor.py`'s business, covered by tests/test_anchor.py and
+    the integration tests."""
+
     effective_user: FakeUser | None
     effective_chat: FakeChat | None
     callback_query: FakeCallbackQuery | None = None
     replies: list[str] = field(default_factory=list)
     markups: list[Any] = field(default_factory=list)
+    posts: list[str] = field(default_factory=list)
 
     async def reply_text(self, text: str, reply_markup: Any = None) -> None:
         self.replies.append(text)
         self.markups.append(reply_markup)
+
+    async def send_text(self, text: str) -> None:
+        self.posts.append(text)
 
 
 @dataclass
@@ -290,9 +293,12 @@ def test_shopping_renders_the_aggregated_list(conn: sqlite3.Connection) -> None:
     _seed_plan(conn, monday)
     update = _update()
     _run(cmd_shopping(update, _context(conn, monday)))
-    assert len(update.replies) == 1
-    assert "Despensa:" in update.replies[0]
-    assert update.replies[0].count("food-") > 0
+    # The list is content, not a menu: it is posted, never rendered onto the
+    # chat's anchored message.
+    assert update.replies == []
+    assert len(update.posts) == 1
+    assert "Despensa:" in update.posts[0]
+    assert update.posts[0].count("food-") > 0
 
 
 def test_shopping_splits_into_several_messages_when_long(conn: sqlite3.Connection) -> None:
@@ -324,7 +330,7 @@ def test_shopping_splits_into_several_messages_when_long(conn: sqlite3.Connectio
 
     update = _update()
     _run(cmd_shopping(update, _context(conn, monday)))
-    assert len(update.replies) > 1
+    assert len(update.posts) > 1
 
 
 def test_reply_only_goes_to_the_calling_chat_not_the_group(conn: sqlite3.Connection) -> None:
@@ -651,18 +657,18 @@ def test_dishes_paginates_at_twenty_with_working_next_and_previous_buttons(
     _run(on_catalog_callback(callback_update, _context(conn, date(2026, 9, 21))))
 
     assert query.answered
-    assert "Página 2 de 2" in query.edits[0]
-    assert query.edits[0].count("Plato") == 5
-    assert query.edits[0] != update.replies[0]
+    assert "Página 2 de 2" in callback_update.replies[0]
+    assert callback_update.replies[0].count("Plato") == 5
+    assert callback_update.replies[0] != update.replies[0]
 
-    # and back to page one via the "previous" button on the edited keyboard
-    prev_keyboard = query.edit_markups[0]
+    # and back to page one via the "previous" button on the re-rendered keyboard
+    prev_keyboard = callback_update.markups[0]
     assert prev_keyboard is not None
     prev_button = next(b for row in prev_keyboard for b in row if b[0] != PAGINATION_NEXT_BUTTON)
     query2 = FakeCallbackQuery(data=prev_button[1])
     callback_update2 = _update(callback_query=query2)
     _run(on_catalog_callback(callback_update2, _context(conn, date(2026, 9, 21))))
-    assert "Página 1 de 2" in query2.edits[0]
+    assert "Página 1 de 2" in callback_update2.replies[0]
 
 
 def test_dishes_archivados_lists_inactive_with_pagination(conn: sqlite3.Connection) -> None:
@@ -732,7 +738,7 @@ def test_dish_partial_match_offers_buttons_and_tapping_one_returns_the_card(
     callback_update = _update(callback_query=query)
     _run(on_catalog_callback(callback_update, _context(conn, date(2026, 9, 21))))
     assert query.answered
-    assert label in query.edits[0]
+    assert label in callback_update.replies[0]
 
 
 def test_dish_partial_match_caps_at_five_buttons(conn: sqlite3.Connection) -> None:
@@ -877,7 +883,7 @@ def test_restore_offers_buttons_when_the_name_matches_more_than_one(
     callback_update = _update(callback_query=query)
     _run(on_catalog_callback(callback_update, _context(conn, date(2026, 9, 21))))
     assert query.answered
-    assert len(query.edits) == 1
+    assert len(callback_update.replies) == 1
 
 
 def test_restore_says_so_when_nothing_matches(conn: sqlite3.Connection) -> None:
@@ -900,7 +906,7 @@ def test_callback_with_malformed_data_does_not_raise(conn: sqlite3.Connection) -
     update = _update(callback_query=query)
     _run(on_catalog_callback(update, _context(conn, date(2026, 9, 21))))
     assert query.answered
-    assert query.edits == []
+    assert update.replies == []
 
 
 def test_callback_with_no_query_is_a_noop(conn: sqlite3.Connection) -> None:
@@ -928,12 +934,13 @@ def test_foods_paginates_at_twenty_with_working_next_button(conn: sqlite3.Connec
     next_button = next(b for row in keyboard for b in row if b[0] == PAGINATION_NEXT_BUTTON)
 
     query = FakeCallbackQuery(data=next_button[1])
-    _run(on_catalog_callback(_update(callback_query=query), _context(conn, date(2026, 9, 21))))
+    callback_update = _update(callback_query=query)
+    _run(on_catalog_callback(callback_update, _context(conn, date(2026, 9, 21))))
 
     assert query.answered
-    assert "Página 2 de 2" in query.edits[0]
-    assert query.edits[0].count("Alimento") == 5
-    assert query.edits[0] != update.replies[0]
+    assert "Página 2 de 2" in callback_update.replies[0]
+    assert callback_update.replies[0].count("Alimento") == 5
+    assert callback_update.replies[0] != update.replies[0]
 
 
 def test_foods_archivados_paginates_too(conn: sqlite3.Connection) -> None:

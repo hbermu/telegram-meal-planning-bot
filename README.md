@@ -12,6 +12,7 @@ The bot speaks Spanish. The code, the documentation, and the commit history are 
 - A relaxation ladder that loosens the rules in a fixed order when the catalogue is too small, and says what it loosened
 - An aggregated shopping list grouped by supermarket category
 - Step-by-step wizards to add dishes and foods from a phone, in a private chat
+- One message per chat to navigate in: replies are edited in place and the commands you type are deleted, so browsing does not fill the chat. Give the bot the delete-messages right in a group, or your commands stay on screen.
 - A Telegram user allow-list; unknown users get no reply
 - One SQLite file, one process, no external services
 

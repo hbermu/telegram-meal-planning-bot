@@ -29,14 +29,17 @@ class UpdateLike(Protocol):
     effective_user: UserLike | None
     effective_chat: ChatLike | None
 
+    # `reply_text` renders onto the chat's one menu message (see
+    # `meal_planning_bot/anchor.py`); `send_text` posts content that must stay
+    # in the chat on its own, such as a shopping list.
     async def reply_text(self, text: str, reply_markup: Keyboard | None = None) -> None: ...
+    async def send_text(self, text: str) -> None: ...
 
 
 class CallbackQueryLike(Protocol):
     data: str | None
 
     async def answer(self) -> None: ...
-    async def edit_message_text(self, text: str, reply_markup: Keyboard | None = None) -> None: ...
 
 
 class CallbackUpdateLike(UpdateLike, Protocol):

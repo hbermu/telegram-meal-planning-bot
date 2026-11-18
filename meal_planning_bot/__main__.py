@@ -24,6 +24,7 @@ from telegram.ext import (
 
 from meal_planning_bot import scheduler
 from meal_planning_bot.access import allowed
+from meal_planning_bot.anchor import Anchors
 from meal_planning_bot.config import Config, ConfigError, load_config
 from meal_planning_bot.db import open_database
 from meal_planning_bot.formatting import COMMANDS
@@ -147,6 +148,8 @@ def build_application(
     app.bot_data["conn"] = conn
     app.bot_data["clock"] = clock
     app.bot_data["rng"] = Random()
+    # One menu message per chat, edited in place; see meal_planning_bot/anchor.py.
+    app.bot_data["anchors"] = Anchors()
     app.bot_data["allow_partial_plan"] = config.allow_partial_plan
     app.bot_data["reschedule"] = lambda key: scheduler.reschedule(
         _job_queue(app), conn, config, key

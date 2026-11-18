@@ -12,6 +12,7 @@
 - `meal_planning_bot/handlers/wizards.py` — the mutating flows
 - `meal_planning_bot/handlers/settings.py` — `/settings`, `/set`
 - `meal_planning_bot/formatting.py` — every reply string
+- `meal_planning_bot/anchor.py` — the one message per chat every reply is rendered onto; see `navigation.md`
 
 ## Settings used
 
@@ -31,6 +32,7 @@ none
 8. If `/swap` is given arguments it cannot parse, then the bot shall reply with the accepted forms and shall change nothing.
 8b. If `/swap` names a slot the stored plan does not cover, then the bot shall say so, shall point at `/newdish` and `/regenerate`, and shall change nothing.
 9. When a command that changes the plan succeeds, the bot shall reply in the chat it was called from, and shall not broadcast to the group.
+9b. Every reply shall be rendered onto that chat's single anchored message, and the command that asked for it shall be deleted; see `navigation.md`.
 10. The bot shall reply to an unknown command with the `/help` text.
 11. Every reply shall be Spanish.
 12. The application shall be constructed with an injectable bot and clock, so it can be assembled in a test against a fake transport and a fixed date instead of a live network connection and the real one.

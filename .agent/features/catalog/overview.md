@@ -26,6 +26,7 @@ none
 8. When a user sends `/restore <name>`, the bot shall reactivate the matching archived dish or food, and shall present inline buttons when the name matches more than one archived item.
 9. If `/restore` is given a name that matches no archived item, then the bot shall say so and shall change nothing.
 10. The catalogue shall report, for each meal type, how many active dishes exist, so that `../week-planner/overview.md` can explain an unsatisfiable week.
+11. When a page button or a match button is tapped, the bot shall render the new page or card onto the chat's anchored message, so browsing the catalogue leaves one message behind; see `../command-surface/navigation.md`.
 
 ## Commands
 

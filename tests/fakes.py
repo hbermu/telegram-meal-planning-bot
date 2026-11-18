@@ -15,6 +15,14 @@ class Sent:
     chat_id: int
     text: str
     markup: Any = None
+    message_id: int = 0
+
+
+@dataclass
+class SentMessage:
+    """What `Bot.send_message` gives back: the anchor needs the new id."""
+
+    message_id: int
 
 
 class FakeBot:
@@ -31,7 +39,13 @@ class FakeBot:
         self.defaults = None
         self.sent: list[Sent] = []
         self.edited: list[Sent] = []
+        self.deleted: list[tuple[int, int]] = []
         self.answered: list[str] = []
+        # Sends and edits in the order they happened: with one anchored message
+        # per chat, the newest thing the bot said is usually an edit, and
+        # reading `sent` alone would report a stale reply.
+        self.messages: list[Sent] = []
+        self._next_id = 1000
 
     async def initialize(self) -> None:
         pass
@@ -41,8 +55,12 @@ class FakeBot:
 
     async def send_message(
         self, chat_id: int, text: str, reply_markup: Any = None, **kwargs: Any
-    ) -> None:
-        self.sent.append(Sent(chat_id, text, reply_markup))
+    ) -> SentMessage:
+        self._next_id += 1
+        record = Sent(chat_id, text, reply_markup, self._next_id)
+        self.sent.append(record)
+        self.messages.append(record)
+        return SentMessage(message_id=self._next_id)
 
     async def edit_message_text(
         self,
@@ -52,7 +70,12 @@ class FakeBot:
         reply_markup: Any = None,
         **kwargs: Any,
     ) -> None:
-        self.edited.append(Sent(chat_id, text, reply_markup))
+        record = Sent(chat_id, text, reply_markup, message_id)
+        self.edited.append(record)
+        self.messages.append(record)
+
+    async def delete_message(self, chat_id: int, message_id: int, **kwargs: Any) -> None:
+        self.deleted.append((chat_id, message_id))
 
     async def answer_callback_query(self, callback_query_id: str, **kwargs: Any) -> None:
         self.answered.append(callback_query_id)
@@ -96,9 +119,7 @@ class Driver:
         if text.startswith("/"):
             command_token = text.split(maxsplit=1)[0]
             entities = (
-                MessageEntity(
-                    type=MessageEntity.BOT_COMMAND, offset=0, length=len(command_token)
-                ),
+                MessageEntity(type=MessageEntity.BOT_COMMAND, offset=0, length=len(command_token)),
             )
         message = Message(
             message_id=self._next_message_id(),
@@ -139,8 +160,12 @@ class Driver:
         # Empty when the caller is outside the allow-list: no reply was ever
         # sent, and the disallowed-user test still needs `.send`/`.tap` to
         # return without raising.
-        if self.bot.sent:
-            return self.bot.sent[-1].text
-        if self.bot.edited:
-            return self.bot.edited[-1].text
-        return ""
+        return self.bot.messages[-1].text if self.bot.messages else ""
+
+    @property
+    def anchor_id(self) -> int | None:
+        """The message the chat is navigating in, as the bot sees it."""
+        for record in reversed(self.bot.messages):
+            if record.chat_id == self.chat_id:
+                return record.message_id
+        return None

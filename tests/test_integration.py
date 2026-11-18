@@ -2,9 +2,11 @@ from datetime import date
 from pathlib import Path
 from random import Random
 from sqlite3 import Connection
+from typing import Any
 
 from meal_planning_bot import repo, scheduler
 from meal_planning_bot.__main__ import build_application
+from meal_planning_bot.anchor import Anchors
 from meal_planning_bot.config import Config
 from meal_planning_bot.db import open_database
 from meal_planning_bot.formatting import MEAL_TYPE_LABELS, NO_PLAN_MESSAGE, PRIVATE_ONLY_MESSAGE
@@ -44,6 +46,11 @@ DISH_SPECS: list[tuple[str, str, list[tuple[str, float]]]] = [
     ("Sopa de pasta", "dinner", [("Caldo", 300), ("Pasta", 100)]),
     ("Crema de calabaza", "dinner", [("Caldo", 300), ("Calabaza", 200)]),
 ]
+
+
+def _first_button(markup: Any) -> str:
+    """The callback data behind the first inline button of a reply."""
+    return str(markup.inline_keyboard[0][0].callback_data)
 
 
 def _config(tmp_path: Path, allowed: frozenset[int] = frozenset({ALLOWED_USER})) -> Config:
@@ -174,9 +181,9 @@ async def test_full_journey(tmp_path: Path) -> None:
 
     # /dishes paginates over six dishes in one page, so it carries no keyboard; the dish
     # card reached through a fuzzy match does. Both go through telegram_bridge.to_markup.
-    bot.sent.clear()
+    bot.messages.clear()
     await user.send("/dish sopa")
-    assert any(sent.markup is not None for sent in bot.sent), (
+    assert any(message.markup is not None for message in bot.messages), (
         "a fuzzy /dish match must offer inline buttons; to_markup dropped them"
     )
 
@@ -184,6 +191,71 @@ async def test_full_journey(tmp_path: Path) -> None:
     # after = "header\n\nMonday\n\nTuesday\n\n...": index 2 is Tuesday's block.
     tuesday_block = after.split("\n\n")[2]
     assert today_text == tuesday_block
+
+    await app.shutdown()
+
+
+async def test_navigation_reuses_one_message_and_takes_the_commands_away(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    conn = open_database(config.db_path)
+    _seed_catalogue_via_repo(conn)
+    bot = FakeBot()
+    app = build_application(config, conn, bot=bot, clock=lambda: TODAY)
+    app.bot_data["rng"] = Random(0)
+    await app.initialize()
+    user = Driver(app, bot, chat_id=PRIVATE_CHAT, user_id=ALLOWED_USER)
+
+    await user.send("/help")
+    anchor = bot.sent[-1].message_id
+    await user.send("/regenerate")
+    await user.send("/plan")
+    await user.send("/dishes")
+
+    assert len(bot.sent) == 1, "only the first reply posts a message; the rest edit it"
+    assert {edit.message_id for edit in bot.edited} == {anchor}
+    # Every command the user typed is off the screen.
+    assert len(bot.deleted) == 4
+    assert {chat_id for chat_id, _ in bot.deleted} == {PRIVATE_CHAT}
+    assert len(bot.edited) == 3
+
+    # A tap keeps navigating in that same message.
+    await user.send("/dish sopa")
+    await user.tap(_first_button(bot.edited[-1].markup))
+    assert bot.edited[-1].message_id == anchor
+    assert len(bot.sent) == 1
+
+    # The shopping list is content: it is posted, and the menu stays put.
+    await user.send("/shopping")
+    assert len(bot.sent) == 2
+    await user.send("/plan")
+    assert bot.edited[-1].message_id == anchor
+
+    await app.shutdown()
+
+
+async def test_a_tap_after_a_restart_adopts_the_menu_on_screen(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    conn = open_database(config.db_path)
+    _seed_catalogue_via_repo(conn)
+    bot = FakeBot()
+    app = build_application(config, conn, bot=bot, clock=lambda: TODAY)
+    await app.initialize()
+    user = Driver(app, bot, chat_id=PRIVATE_CHAT, user_id=ALLOWED_USER)
+
+    await user.send("/dish sopa")
+    button = _first_button(bot.sent[-1].markup)
+
+    # A restart forgets the anchor while the menu is still on screen.
+    app.bot_data["anchors"] = Anchors()
+    bot.sent.clear()
+    bot.edited.clear()
+
+    await user.tap(button)
+
+    assert bot.sent == [], "the tap must adopt the message it came from, not post a new one"
+    assert len(bot.edited) == 1
 
     await app.shutdown()
 
