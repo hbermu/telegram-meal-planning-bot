@@ -1,14 +1,15 @@
 from meal_planning_bot.access import private_only
 from meal_planning_bot.formatting import render_help, render_my_id
-from meal_planning_bot.handlers import ContextLike, UpdateLike
+from meal_planning_bot.handlers import ContextLike, UpdateLike, keyboards
+from meal_planning_bot.handlers.menu import show_main
 
-
-async def cmd_start(update: UpdateLike, context: ContextLike) -> None:
-    await update.reply_text(render_help())
+# /start is the way into the menu; /help prints the command list, which is what
+# someone who types commands wants to see.
+cmd_start = show_main
 
 
 async def cmd_help(update: UpdateLike, context: ContextLike) -> None:
-    await update.reply_text(render_help())
+    await update.reply_text(render_help(), reply_markup=keyboards.back_to(keyboards.MAIN))
 
 
 # Unknown commands fall back to the same help text (requirement 10).

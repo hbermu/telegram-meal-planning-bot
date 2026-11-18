@@ -27,6 +27,7 @@ none
 9. If `/restore` is given a name that matches no archived item, then the bot shall say so and shall change nothing.
 10. The catalogue shall report, for each meal type, how many active dishes exist, so that `../week-planner/overview.md` can explain an unsatisfiable week.
 11. When a page button or a match button is tapped, the bot shall render the new page or card onto the chat's anchored message, so browsing the catalogue leaves one message behind; see `../command-surface/navigation.md`.
+12. Every browsing reply shall carry a button back to the catalogue menu, which the main menu reaches.
 
 ## Commands
 

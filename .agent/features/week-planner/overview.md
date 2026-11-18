@@ -7,7 +7,7 @@
 - `meal_planning_bot/planner.py` — the solver, the constraint checks, the slot eligibility rule, and the relaxation ladder
 - `meal_planning_bot/models.py` — `Plan`, `PlanEntry`, `Slot`, `SLOT_ORDER`, `SLOT_MEAL_TYPE`
 - `meal_planning_bot/repo.py` — loads the catalogue and the recent history, persists the result
-- `meal_planning_bot/handlers/plan.py` — `/plan`, `/regenerate`, `/swap`
+- `meal_planning_bot/handlers/plan.py` — `/plan`, `/regenerate`, `/swap`, and the views the menu shares with them
 - `meal_planning_bot/weeks.py` — resolves the `siguiente` keyword to next Monday's `week_start`
 
 ## Settings used
@@ -31,6 +31,7 @@
 9. The planner shall abandon a relaxation step after a bounded number of search node visits and move to the next step rather than run unbounded.
 10. When a plan is regenerated for a week that already has one, the repository shall replace the existing plan's entries rather than create a second plan for the same `week_start`.
 10b. The planner shall be able to draw any `week_start`, and the commands shall address either the current week or the following one through the optional keyword `siguiente`.
+10c. A plan reply shall carry the plan menu, so the week can be re-drawn, shopped for or switched to the other week without typing; see `../command-surface/navigation.md`.
 11. When one slot is re-drawn, the planner shall hold every other assignment of that plan fixed and shall apply the same hard constraints to the candidate.
 12. If re-drawing one slot has no valid candidate, then the bot shall say so and shall leave the existing assignment in place.
 13. If re-drawing names a slot the stored plan does not cover, then the bot shall say so and shall change nothing; see `partial-plans.md`.

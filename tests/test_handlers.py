@@ -17,9 +17,12 @@ from meal_planning_bot.formatting import (
     COMMANDS,
     DISH_FUZZY_PROMPT,
     DISH_NOT_FOUND_MESSAGE,
+    MAIN_MENU_HEADER,
+    NEXT_WEEK_BUTTON,
     NO_PLAN_MESSAGE,
     PAGINATION_NEXT_BUTTON,
     PARTIAL_PLAN_NOTICE,
+    REGENERATE_CONFIRM_PROMPT,
     RESTORE_AMBIGUOUS_PROMPT,
     RESTORE_NOT_FOUND_MESSAGE,
     SLOT_NOT_PLANNED_MESSAGE,
@@ -44,6 +47,8 @@ from meal_planning_bot.handlers.catalog import (
     parse_callback,
 )
 from meal_planning_bot.handlers.help import cmd_help, cmd_myid, cmd_start, cmd_unknown
+from meal_planning_bot.handlers.keyboards import MAIN, NEXT, NOW, back_to, main_menu
+from meal_planning_bot.handlers.menu import on_menu_callback
 from meal_planning_bot.handlers.plan import (
     cmd_plan,
     cmd_regenerate,
@@ -173,11 +178,18 @@ def _seed_plan(conn: sqlite3.Connection, week_start: date) -> None:
 # --- /start, /help, /myid ---------------------------------------------------
 
 
-def test_start_and_help_return_the_command_list(conn: sqlite3.Connection) -> None:
-    for handler in (cmd_start, cmd_help):
-        update = _update()
-        _run(handler(update, _context(conn, date(2026, 9, 21))))
-        assert update.replies == [render_help()]
+def test_start_opens_the_menu(conn: sqlite3.Connection) -> None:
+    update = _update()
+    _run(cmd_start(update, _context(conn, date(2026, 9, 21))))
+    assert update.replies == [MAIN_MENU_HEADER]
+    assert update.markups[0] == main_menu()
+
+
+def test_help_returns_the_command_list(conn: sqlite3.Connection) -> None:
+    update = _update()
+    _run(cmd_help(update, _context(conn, date(2026, 9, 21))))
+    assert update.replies == [render_help()]
+    assert update.markups[0] == back_to(MAIN)
 
 
 def test_unknown_command_falls_back_to_help(conn: sqlite3.Connection) -> None:
@@ -1040,3 +1052,79 @@ def test_token_never_appears_in_a_log_record(caplog: pytest.LogCaptureFixture) -
         logger.info("built config %s", secret_config)
 
     assert "super-secret-token-xyz" not in caplog.text
+
+
+# --- the menu --------------------------------------------------------------
+
+
+def _tap(conn: sqlite3.Connection, today: date, data: str) -> FakeUpdate:
+    query = FakeCallbackQuery(data=data)
+    update = _update(callback_query=query)
+    _run(on_menu_callback(update, _context(conn, today)))
+    assert query.answered
+    return update
+
+
+def test_every_main_menu_button_leads_somewhere(conn: sqlite3.Connection) -> None:
+    monday = date(2026, 9, 21)
+    _seed_plan(conn, monday)
+    for row in main_menu():
+        for _label, data in row:
+            update = _tap(conn, monday, data)
+            assert update.replies or update.posts, f"{data} answered nothing"
+
+
+def test_the_plan_menu_walks_to_next_week_and_back(conn: sqlite3.Connection) -> None:
+    monday = date(2026, 9, 21)
+    _seed_plan(conn, monday)
+    catalogue = repo.list_dishes(conn, archived=False)
+    following_week = date(2026, 9, 28)
+    repo.save_plan(
+        conn,
+        plan_week(
+            catalogue, [], planner_settings(conn), following_week, random.Random(2), False
+        ),
+    )
+
+    current = _tap(conn, monday, f"menu:plan:{NOW}")
+    assert "Plan de esta semana" in current.replies[0]
+    next_label = next(
+        label for row in current.markups[0] for label, data in row if data == f"menu:plan:{NEXT}"
+    )
+    assert next_label == NEXT_WEEK_BUTTON
+
+    following = _tap(conn, monday, f"menu:plan:{NEXT}")
+    assert "Plan de la semana que viene" in following.replies[0]
+    assert any(
+        data == f"menu:plan:{NOW}" for row in following.markups[0] for _label, data in row
+    )
+
+
+def test_regenerating_from_the_menu_asks_first(conn: sqlite3.Connection) -> None:
+    monday = date(2026, 9, 21)
+    _seed_plan(conn, monday)
+    before = repo.get_plan(conn, monday)
+
+    asked = _tap(conn, monday, f"menu:regen:{NOW}")
+    assert asked.replies == [REGENERATE_CONFIRM_PROMPT]
+    assert repo.get_plan(conn, monday) == before
+
+    drawn = _tap(conn, monday, f"menu:regenyes:{NOW}")
+    assert "Plan de esta semana" in drawn.replies[0]
+
+
+def test_the_shopping_button_posts_content_and_leaves_the_menu(conn: sqlite3.Connection) -> None:
+    monday = date(2026, 9, 21)
+    _seed_plan(conn, monday)
+
+    update = _tap(conn, monday, f"menu:shopping:{NOW}")
+
+    assert update.replies == []
+    assert update.posts and "Despensa:" in update.posts[0]
+
+
+def test_a_button_this_version_does_not_know_opens_the_main_menu(
+    conn: sqlite3.Connection,
+) -> None:
+    update = _tap(conn, date(2026, 9, 21), "menu:retirado:3")
+    assert update.replies == [MAIN_MENU_HEADER]

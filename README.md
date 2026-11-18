@@ -80,7 +80,9 @@ TELEGRAM_BOT_TOKEN=... MEALBOT_ALLOWED_USER_IDS=... MEALBOT_GROUP_CHAT_ID=... \
 
 **Configuration** — `/settings`, `/set <key> <value>`
 
-**Other** — `/start`, `/help`, `/myid`
+**Other** — `/start` (opens the menu), `/help`, `/myid`
+
+Every command is also reachable with buttons: `/start` opens a menu that walks to the plan, the day, the shopping list, the catalogue, the settings and the help text.
 
 ## Development
 

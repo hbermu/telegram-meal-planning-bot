@@ -36,6 +36,7 @@ from meal_planning_bot.handlers.catalog import (
     on_catalog_callback,
 )
 from meal_planning_bot.handlers.help import cmd_help, cmd_myid, cmd_start, cmd_unknown
+from meal_planning_bot.handlers.menu import on_menu_callback
 from meal_planning_bot.handlers.plan import (
     cmd_plan,
     cmd_regenerate,
@@ -67,6 +68,7 @@ from meal_planning_bot.weeks import current_week_start, next_week_start
 Application = PTBApplication[Any, Any, Any, Any, Any, Any]
 
 _CATALOG_CALLBACK_PATTERN = r"^(dishes|foods|dish|restore):"
+_MENU_CALLBACK_PATTERN = r"^menu:"
 _WIZARD_CALLBACK_PATTERN = (
     r"^(meal|ing|ingfood|unit|cat|kcalref|steps|kcal|confirm|wizdish|wizfood"
     r"|field|ffield|deletedish|deletefood):"
@@ -113,6 +115,11 @@ def _register_handlers(app: Application, config: Config) -> None:
     gated_wizard_message = gate(on_wizard_message)
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, bridge_wizard_text(gated_wizard_message))
+    )
+
+    gated_menu_callback = gate(on_menu_callback)
+    app.add_handler(
+        CallbackQueryHandler(bridge(gated_menu_callback), pattern=_MENU_CALLBACK_PATTERN)
     )
 
     gated_catalog_callback = gate(on_catalog_callback)

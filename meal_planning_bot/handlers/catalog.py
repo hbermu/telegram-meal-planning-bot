@@ -26,6 +26,7 @@ from meal_planning_bot.handlers import (
     Keyboard,
     UpdateLike,
     get_conn,
+    keyboards,
     load_all_foods,
 )
 from meal_planning_bot.models import CATEGORY_ORDER, Dish, Food, MealType
@@ -102,17 +103,22 @@ def _sorted_foods(conn: Connection, archived: bool) -> list[Food]:
     return sorted(foods, key=lambda f: (CATEGORY_ORDER.index(f.category), f.name.lower()))
 
 
-def _page_keyboard(prefix: str, page: int, archived: bool, total: int) -> Keyboard | None:
+def _back_to_catalogue() -> Keyboard:
+    return keyboards.back_to(keyboards.CATALOGUE)
+
+
+def _page_keyboard(prefix: str, page: int, archived: bool, total: int) -> Keyboard:
     total_pages = max(1, ceil(total / DISHES_PAGE_SIZE))
     buttons: list[tuple[str, str]] = []
     if page > 1:
         buttons.append((PAGINATION_PREV_BUTTON, f"{prefix}:{page - 1}:{int(archived)}"))
     if page < total_pages:
         buttons.append((PAGINATION_NEXT_BUTTON, f"{prefix}:{page + 1}:{int(archived)}"))
+    back = keyboards.back_row(keyboards.CATALOGUE)
     if not buttons:
-        return None
+        return (back,)
     row: ButtonRow = tuple(buttons)
-    return (row,)
+    return (row, back)
 
 
 async def cmd_dishes(update: UpdateLike, context: ContextLike) -> None:
@@ -135,15 +141,17 @@ async def cmd_dish(update: UpdateLike, context: ContextLike) -> None:
     exact = next((d for d in matches if d.name.lower() == name.lower()), None)
     if exact is not None:
         foods = load_all_foods(conn)
-        await update.reply_text(render_dish(exact, foods))
+        await update.reply_text(render_dish(exact, foods), reply_markup=_back_to_catalogue())
         return
 
     if not matches:
-        await update.reply_text(DISH_NOT_FOUND_MESSAGE)
+        await update.reply_text(DISH_NOT_FOUND_MESSAGE, reply_markup=_back_to_catalogue())
         return
 
     row: ButtonRow = tuple((d.name, f"dish:{d.id}") for d in matches[:5])
-    await update.reply_text(DISH_FUZZY_PROMPT, reply_markup=(row,))
+    await update.reply_text(
+        DISH_FUZZY_PROMPT, reply_markup=(row, keyboards.back_row(keyboards.CATALOGUE))
+    )
 
 
 async def cmd_foods(update: UpdateLike, context: ContextLike) -> None:
@@ -233,10 +241,10 @@ async def on_catalog_callback(update: CallbackUpdateLike, context: ContextLike) 
         try:
             dish = repo.get_dish(conn, action.dish_id)
         except LookupError:
-            await update.reply_text(DISH_NOT_FOUND_MESSAGE)
+            await update.reply_text(DISH_NOT_FOUND_MESSAGE, reply_markup=_back_to_catalogue())
             return
         foods = load_all_foods(conn)
-        await update.reply_text(render_dish(dish, foods))
+        await update.reply_text(render_dish(dish, foods), reply_markup=_back_to_catalogue())
         return
 
     if action.kind == "dish":

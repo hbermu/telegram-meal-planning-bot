@@ -1,5 +1,6 @@
 import unicodedata
 from collections.abc import Sequence
+from datetime import date
 
 from meal_planning_bot import repo
 from meal_planning_bot.formatting import (
@@ -22,6 +23,7 @@ from meal_planning_bot.handlers import (
     get_clock,
     get_conn,
     get_rng,
+    keyboards,
     load_all_foods,
     load_dishes_for_plan,
 )
@@ -86,8 +88,23 @@ def parse_swap_args(args: Sequence[str]) -> tuple[int, Slot, bool]:
     return _DAY_NAMES[day_token], _SLOT_NAMES[slot_token], is_next
 
 
-async def cmd_plan(update: UpdateLike, context: ContextLike) -> None:
+async def show_plan(
+    update: UpdateLike, context: ContextLike, week_start: date, is_next: bool
+) -> None:
     conn = get_conn(context)
+    plan = repo.get_plan(conn, week_start)
+    if plan is None:
+        await update.reply_text(NO_PLAN_MESSAGE, reply_markup=keyboards.plan_menu(is_next))
+        return
+
+    dishes = load_dishes_for_plan(conn, plan)
+    await update.reply_text(
+        render_plan(plan, dishes, is_next_week=is_next),
+        reply_markup=keyboards.plan_menu(is_next),
+    )
+
+
+async def cmd_plan(update: UpdateLike, context: ContextLike) -> None:
     today = get_clock(context)()
     try:
         week_start, is_next = resolve_week(context.args, today)
@@ -95,44 +112,34 @@ async def cmd_plan(update: UpdateLike, context: ContextLike) -> None:
         await update.reply_text(UNKNOWN_ARGUMENT_MESSAGE)
         return
 
-    plan = repo.get_plan(conn, week_start)
-    if plan is None:
-        await update.reply_text(NO_PLAN_MESSAGE)
-        return
-
-    dishes = load_dishes_for_plan(conn, plan)
-    await update.reply_text(render_plan(plan, dishes, is_next_week=is_next))
+    await show_plan(update, context, week_start, is_next)
 
 
 async def cmd_today(update: UpdateLike, context: ContextLike) -> None:
     conn = get_conn(context)
     today = get_clock(context)()
+    back = keyboards.back_to(keyboards.MAIN)
     if today.weekday() >= 5:
-        await update.reply_text(WEEKEND_MESSAGE)
+        await update.reply_text(WEEKEND_MESSAGE, reply_markup=back)
         return
 
     week_start = current_week_start(today)
     plan = repo.get_plan(conn, week_start)
     if plan is None:
-        await update.reply_text(NO_PLAN_MESSAGE)
+        await update.reply_text(NO_PLAN_MESSAGE, reply_markup=back)
         return
 
     dishes = load_dishes_for_plan(conn, plan)
-    await update.reply_text(render_day(plan, dishes, today.weekday()))
+    await update.reply_text(render_day(plan, dishes, today.weekday()), reply_markup=back)
 
 
-async def cmd_shopping(update: UpdateLike, context: ContextLike) -> None:
+async def post_shopping(
+    update: UpdateLike, context: ContextLike, week_start: date, is_next: bool
+) -> None:
     conn = get_conn(context)
-    today = get_clock(context)()
-    try:
-        week_start, _is_next = resolve_week(context.args, today)
-    except ArgumentError:
-        await update.reply_text(UNKNOWN_ARGUMENT_MESSAGE)
-        return
-
     plan = repo.get_plan(conn, week_start)
     if plan is None:
-        await update.reply_text(NO_PLAN_MESSAGE)
+        await update.reply_text(NO_PLAN_MESSAGE, reply_markup=keyboards.plan_menu(is_next))
         return
 
     dishes = load_dishes_for_plan(conn, plan)
@@ -144,8 +151,7 @@ async def cmd_shopping(update: UpdateLike, context: ContextLike) -> None:
         await update.send_text(message)
 
 
-async def cmd_regenerate(update: UpdateLike, context: ContextLike) -> None:
-    conn = get_conn(context)
+async def cmd_shopping(update: UpdateLike, context: ContextLike) -> None:
     today = get_clock(context)()
     try:
         week_start, is_next = resolve_week(context.args, today)
@@ -153,6 +159,14 @@ async def cmd_regenerate(update: UpdateLike, context: ContextLike) -> None:
         await update.reply_text(UNKNOWN_ARGUMENT_MESSAGE)
         return
 
+    await post_shopping(update, context, week_start, is_next)
+
+
+async def regenerate(
+    update: UpdateLike, context: ContextLike, week_start: date, is_next: bool
+) -> None:
+    conn = get_conn(context)
+    today = get_clock(context)()
     catalogue = repo.list_dishes(conn, archived=False)
     history = repo.scheduled_history(conn, today)
     settings = repo.planner_settings(conn)
@@ -166,14 +180,30 @@ async def cmd_regenerate(update: UpdateLike, context: ContextLike) -> None:
             get_allow_partial_plan(context),
         )
     except PlannerFailure as exc:
-        await update.reply_text(render_planner_failure(exc.diagnosis))
+        await update.reply_text(
+            render_planner_failure(exc.diagnosis), reply_markup=keyboards.plan_menu(is_next)
+        )
         return
 
     repo.save_plan(conn, plan)
     dishes = load_dishes_for_plan(conn, plan)
     text = render_plan(plan, dishes, is_next_week=is_next)
     notice = render_relaxation_notice(plan.relaxation)
-    await update.reply_text(f"{text}\n\n{notice}" if notice else text)
+    await update.reply_text(
+        f"{text}\n\n{notice}" if notice else text,
+        reply_markup=keyboards.plan_menu(is_next),
+    )
+
+
+async def cmd_regenerate(update: UpdateLike, context: ContextLike) -> None:
+    today = get_clock(context)()
+    try:
+        week_start, is_next = resolve_week(context.args, today)
+    except ArgumentError:
+        await update.reply_text(UNKNOWN_ARGUMENT_MESSAGE)
+        return
+
+    await regenerate(update, context, week_start, is_next)
 
 
 async def cmd_swap(update: UpdateLike, context: ContextLike) -> None:

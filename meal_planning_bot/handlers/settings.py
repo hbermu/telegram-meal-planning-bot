@@ -8,7 +8,7 @@ from meal_planning_bot.formatting import (
     render_settings,
     render_unknown_setting_key,
 )
-from meal_planning_bot.handlers import ContextLike, UpdateLike, get_conn
+from meal_planning_bot.handlers import ContextLike, UpdateLike, get_conn, keyboards
 from meal_planning_bot.repo import SETTING_SPECS, IntSpec, SettingError
 
 _RESCHEDULE_KEYS = frozenset({"weekly_post_weekday", "weekly_post_time", "daily_post_time"})
@@ -17,7 +17,9 @@ _RESCHEDULE_KEYS = frozenset({"weekly_post_weekday", "weekly_post_time", "daily_
 async def cmd_settings(update: UpdateLike, context: ContextLike) -> None:
     conn = get_conn(context)
     rows = repo.all_settings(conn)
-    await update.reply_text(render_settings(rows))
+    await update.reply_text(
+        render_settings(rows), reply_markup=keyboards.back_to(keyboards.MAIN)
+    )
 
 
 async def _cmd_set(update: UpdateLike, context: ContextLike) -> None:

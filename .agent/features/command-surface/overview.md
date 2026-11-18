@@ -6,6 +6,8 @@
 
 - `meal_planning_bot/__main__.py` — handler registration and the `setMyCommands` call
 - `meal_planning_bot/handlers/help.py` — `/start`, `/help`
+- `meal_planning_bot/handlers/menu.py` — the menu tree every command is also reachable through; see `navigation.md`
+- `meal_planning_bot/handlers/menu.py` — the menu tree every command is also reachable through
 - `meal_planning_bot/handlers/plan.py` — `/plan`, `/today`, `/shopping`, `/regenerate`, `/swap`
 - `meal_planning_bot/handlers/catalog.py` — `/dishes`, `/dish`, `/foods`, `/restore`
 - `meal_planning_bot/weeks.py` — resolves the `siguiente` keyword
@@ -21,7 +23,8 @@ none
 ## Requirements
 
 1. The bot shall register its public command list with Telegram at startup.
-2. The bot shall answer `/start` and `/help` with the command list grouped as consultation, plan, catalogue, and configuration.
+2. The bot shall answer `/help` with the command list grouped as consultation, plan, catalogue, and configuration.
+2b. The bot shall answer `/start` with the main menu described in `navigation.md`.
 3. When a user sends `/plan`, the bot shall reply with the current week's five days, each listing the slots that week covers with dish name and effective calories, and the day's total; given the keyword `siguiente` it shall reply with next week's instead, naming the Monday that week starts on.
 3b. When a plan covers fewer than four meal types, the bot shall close that reply with one line naming the missing ones; see `../week-planner/partial-plans.md`.
 4. When a user sends `/today`, the bot shall reply with the slots the current week covers for the current local day.
@@ -41,7 +44,7 @@ none
 
 | Command | Where | Who | Effect |
 |---------|-------|-----|--------|
-| `/start` | both | allow-listed | Command list |
+| `/start` | both | allow-listed | The main menu |
 | `/help` | both | allow-listed | Command list |
 | `/myid` | private | anyone | Caller's Telegram user ID |
 | `/plan [siguiente]` | both | allow-listed | This week's plan, or next week's |

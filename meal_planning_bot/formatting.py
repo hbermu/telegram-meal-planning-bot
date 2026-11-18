@@ -253,6 +253,31 @@ PAGINATION_PREV_BUTTON = "< Anterior"
 PAGINATION_NEXT_BUTTON = "Siguiente >"
 
 
+# --- menu ---------------------------------------------------------------------
+
+MAIN_MENU_HEADER = "¿Qué quieres hacer?"
+CATALOGUE_MENU_HEADER = "Catálogo: elige qué consultar."
+SETTINGS_MENU_HINT = "Para cambiar un valor: /set <clave> <valor> en un chat privado."
+REGENERATE_CONFIRM_PROMPT = (
+    "Esto descarta el plan de esa semana y sortea otro desde cero. ¿Seguir?"
+)
+
+BACK_BUTTON = "< Volver"
+PLAN_BUTTON = "Plan"
+TODAY_BUTTON = "Hoy"
+SHOPPING_BUTTON = "Compra"
+CATALOGUE_BUTTON = "Catálogo"
+SETTINGS_BUTTON = "Ajustes"
+HELP_BUTTON = "Ayuda"
+REGENERATE_BUTTON = "Sortear de nuevo"
+NEXT_WEEK_BUTTON = "Semana que viene"
+CURRENT_WEEK_BUTTON = "Esta semana"
+DISHES_BUTTON = "Platos"
+FOODS_BUTTON = "Alimentos"
+ARCHIVED_DISHES_BUTTON = "Platos archivados"
+ARCHIVED_FOODS_BUTTON = "Alimentos archivados"
+
+
 def render_restored_dish(dish: Dish) -> str:
     return f"Plato restaurado: {dish.name}."
 
@@ -327,7 +352,7 @@ class CommandInfo:
 
 
 COMMANDS: tuple[CommandInfo, ...] = (
-    CommandInfo("start", "/start", "Muestra la lista de comandos", CommandGroup.CONSULTATION),
+    CommandInfo("start", "/start", "Abre el menú", CommandGroup.CONSULTATION),
     CommandInfo("help", "/help", "Muestra la lista de comandos", CommandGroup.CONSULTATION),
     CommandInfo("myid", "/myid", "Devuelve tu ID de Telegram", CommandGroup.CONSULTATION),
     CommandInfo(
