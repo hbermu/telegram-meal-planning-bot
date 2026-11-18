@@ -139,3 +139,27 @@ def test_purity_calling_twice_returns_equal_and_mutates_nothing() -> None:
 )
 def test_quantities_round_half_up_and_predictably(total: float, unit: Unit, expected: str) -> None:
     assert _render_quantity(total, unit) == expected
+
+
+def test_a_slot_nobody_cooks_buys_nothing() -> None:
+    foods = {1: Food(id=1, name="Arroz", unit=Unit.G, category=Category.PANTRY, kcal_ref=360.0)}
+    dishes = {
+        1: Dish(
+            id=1,
+            name="Arroz blanco",
+            meal_type=MealType.LUNCH,
+            kcal=360,
+            ingredients=(DishIngredient(food_id=1, quantity=100.0),),
+        )
+    }
+    plan = Plan(
+        week_start=date(2026, 9, 14),
+        entries=(
+            PlanEntry(day=0, slot=Slot.LUNCH, dish_id=1),
+            PlanEntry(day=1, slot=Slot.LUNCH, dish_id=None, note="Fuera", override=True),
+        ),
+    )
+
+    groups = aggregate(plan, dishes, foods)
+
+    assert [line.quantity for group in groups for line in group.lines] == ["100"]

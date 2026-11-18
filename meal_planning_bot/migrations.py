@@ -80,4 +80,38 @@ def _create_schema(conn: sqlite3.Connection) -> None:
     )
 
 
-MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (_create_schema,)
+_PLAN_ENTRY_OVERRIDES: tuple[str, ...] = (
+    """
+CREATE TABLE plan_entries_new (
+    plan_id INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+    day INTEGER NOT NULL CHECK (day BETWEEN 0 AND 4),
+    slot TEXT NOT NULL CHECK (slot IN ('breakfast', 'snack1', 'lunch', 'snack2', 'dinner')),
+    dish_id INTEGER REFERENCES dishes(id),
+    note TEXT,
+    override INTEGER NOT NULL DEFAULT 0 CHECK (override IN (0, 1)),
+    CHECK ((dish_id IS NOT NULL) <> (note IS NOT NULL)),
+    CHECK (note IS NULL OR override = 1),
+    PRIMARY KEY (plan_id, day, slot)
+)
+""",
+    "INSERT INTO plan_entries_new (plan_id, day, slot, dish_id) "
+    "SELECT plan_id, day, slot, dish_id FROM plan_entries",
+    "DROP TABLE plan_entries",
+    "ALTER TABLE plan_entries_new RENAME TO plan_entries",
+)
+
+
+def _add_plan_entry_overrides(conn: sqlite3.Connection) -> None:
+    # SQLite cannot relax a NOT NULL, so the table is rebuilt. One statement at
+    # a time rather than a script: executescript commits first, which would
+    # take this rebuild of someone's stored plans out of the migration's
+    # transaction and leave the table half replaced if a later step failed.
+    # Nothing references plan_entries, which is what makes dropping it safe.
+    for statement in _PLAN_ENTRY_OVERRIDES:
+        conn.execute(statement)
+
+
+MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (
+    _create_schema,
+    _add_plan_entry_overrides,
+)

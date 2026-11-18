@@ -5,6 +5,7 @@
 ## Source files
 
 - `meal_planning_bot/planner.py` — the solver, the constraint checks, the slot eligibility rule, and the relaxation ladder
+- `meal_planning_bot/handlers/override.py` — pinning a slot by hand; see `overrides.md`
 - `meal_planning_bot/models.py` — `Plan`, `PlanEntry`, `Slot`, `SLOT_ORDER`, `SLOT_MEAL_TYPE`
 - `meal_planning_bot/repo.py` — loads the catalogue and the recent history, persists the result
 - `meal_planning_bot/handlers/plan.py` — `/plan`, `/regenerate`, `/swap`, and the views the menu shares with them
@@ -32,6 +33,7 @@
 10. When a plan is regenerated for a week that already has one, the repository shall replace the existing plan's entries rather than create a second plan for the same `week_start`.
 10b. The planner shall be able to draw any `week_start`, and the commands shall address either the current week or the following one through the optional keyword `siguiente`.
 10c. A plan reply shall carry the plan menu, so the week can be re-drawn, shopped for or switched to the other week without typing; see `../command-surface/navigation.md`.
+10d. The planner shall hold every slot of that week a user chose by hand and shall draw the rest around it; see `overrides.md`.
 11. When one slot is re-drawn, the planner shall hold every other assignment of that plan fixed and shall apply the same hard constraints to the candidate.
 12. If re-drawing one slot has no valid candidate, then the bot shall say so and shall leave the existing assignment in place.
 13. If re-drawing names a slot the stored plan does not cover, then the bot shall say so and shall change nothing; see `partial-plans.md`.
@@ -43,12 +45,14 @@
 | `/plan [siguiente]` | both | allow-listed | Shows this week's plan, or next week's |
 | `/regenerate [siguiente]` | both | allow-listed | Draws a new plan for that week and re-renders the shopping list |
 | `/swap <day> <slot> [siguiente]` | both | allow-listed | Re-draws one slot, keeping the rest |
+| `/override [siguiente] <day> <slot> <dish\|fuera>` | both | allow-listed | Pins one slot by hand; see `overrides.md` |
 
 ## Tests covering this
 
 - `tests/test_planner.py` — a solvable catalogue fills all twenty-five slots; the same seed reproduces the same plan; each hard constraint holds in the result; each relaxation step is reached in order; the node cap ends a hopeless search; a catalogue short on dinners fails with dinner named; single-slot re-draw keeps the other assignments and honours the constraints
 - `tests/test_repo.py` — regenerating a week replaces its entries instead of duplicating the plan row
 - `tests/test_planner.py`, `tests/test_planner_invariants.py` — the partial-plan behaviour listed in `partial-plans.md`
+- `tests/test_planner.py` — the pinned-slot behaviour listed in `overrides.md`
 
 ## Non-goals
 
@@ -57,6 +61,5 @@
 - Leftovers, batch cooking, or carrying a dish from lunch to the next day's dinner.
 - Weekends. Saturday and Sunday are never planned.
 - Planning further than one week ahead. `siguiente` is the limit.
-- Marking a slot as eaten out. Every slot is cooked and shopped for; see `../shopping-list/overview.md`.
 - Per-person plans. There is one plan for the household.
 - Seasonality, cost, or prep time as constraints.

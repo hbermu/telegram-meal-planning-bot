@@ -74,7 +74,7 @@ def get_allow_partial_plan(context: ContextLike) -> bool:
 
 
 def load_dishes_for_plan(conn: Connection, plan: Plan) -> dict[int, Dish]:
-    dish_ids = {entry.dish_id for entry in plan.entries}
+    dish_ids = {entry.dish_id for entry in plan.entries if entry.dish_id is not None}
     return {dish_id: repo.get_dish(conn, dish_id) for dish_id in dish_ids}
 
 

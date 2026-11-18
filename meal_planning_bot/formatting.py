@@ -69,6 +69,24 @@ SLOT_NOT_PLANNED_MESSAGE = (
     "Añade platos con /newdish y vuelve a generar el plan con /regenerate."
 )
 PARTIAL_PLAN_NOTICE = "Sin planificar por falta de platos: {meals}."
+OVERRIDE_MARK = "(elegido)"
+OVERRIDE_USAGE_MESSAGE = (
+    "Uso: /override [siguiente] <día> <turno> <plato>, o "
+    "/override [siguiente] <día> <turno> fuera [texto].\n"
+    "El día puede ser lunes a viernes, 1 a 5, hoy o mañana. "
+    "Los turnos son desayuno, snack1, comida, snack2 y cena."
+)
+OVERRIDE_DEFAULT_NOTE = "Fuera"
+OVERRIDE_KEYWORD = "fuera"
+OVERRIDE_CHANGE_BUTTON = "Cambiar una comida"
+OVERRIDE_OUT_BUTTON = "No cocinamos"
+OVERRIDE_DAY_PROMPT = "¿Qué día cambia?"
+OVERRIDE_SLOT_PROMPT = "¿Qué turno de {day} cambia?"
+OVERRIDE_DISH_PROMPT = "¿Qué vais a comer?"
+OVERRIDE_NO_DISHES_MESSAGE = (
+    "No hay platos de ese tipo en el catálogo. Añade uno con /newdish o elige No cocinamos."
+)
+OVERRIDE_WEEKEND_MESSAGE = "El fin de semana no está planificado, así que no hay nada que cambiar."
 SWAP_UNSATISFIABLE_MESSAGE = (
     "No hay ningún plato que encaje en ese turno sin romper las restricciones. "
     "Se mantiene el plato actual."
@@ -96,8 +114,13 @@ def _day_block(
         entry = by_slot.get(slot)
         if entry is None:
             continue
+        mark = f" {OVERRIDE_MARK}" if entry.override else ""
+        if entry.dish_id is None:
+            assert entry.note is not None
+            lines.append(f"  {SLOT_LABELS[slot]}: {entry.note}{mark}")
+            continue
         dish = dishes[entry.dish_id]
-        lines.append(f"  {SLOT_LABELS[slot]}: {dish.name} ({dish.kcal} kcal)")
+        lines.append(f"  {SLOT_LABELS[slot]}: {dish.name} ({dish.kcal} kcal){mark}")
         total += dish.kcal
     lines.append(f"  Total: {total} kcal")
     return "\n".join(lines)
@@ -306,6 +329,13 @@ def render_swap_unsatisfiable() -> str:
     return SWAP_UNSATISFIABLE_MESSAGE
 
 
+def render_override_kcal_notice(days: Sequence[int]) -> str:
+    if not days:
+        return ""
+    labels = _join_es([DAY_LABELS[day].lower() for day in days])
+    return f"Aviso: las calorías de {labels} se quedan fuera del margen configurado."
+
+
 def render_planner_failure(diagnosis: Diagnosis) -> str:
     lines = [PLANNER_FAILURE_HEADER]
     for shortfall in diagnosis.shortfalls:
@@ -378,6 +408,12 @@ COMMANDS: tuple[CommandInfo, ...] = (
         "swap",
         "/swap <día> <turno> [siguiente]",
         "Vuelve a sortear un solo turno",
+        CommandGroup.PLAN,
+    ),
+    CommandInfo(
+        "override",
+        "/override [siguiente] <día> <turno> <plato|fuera>",
+        "Fija a mano lo que se come en un turno",
         CommandGroup.PLAN,
     ),
     CommandInfo(

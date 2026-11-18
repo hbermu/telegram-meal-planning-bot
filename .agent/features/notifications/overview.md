@@ -38,6 +38,7 @@
 13. The bot shall never post to any chat other than the configured group from a scheduled job.
 13b. A scheduled post shall be a message of its own: it shall never become the group's anchored message, and shall never be edited or deleted; see `../command-surface/navigation.md`.
 14. When generating next week's plan, the bot shall pass the current week's stored entries as history, so the cooldown spans the boundary between the two weeks.
+15. When generating a plan, the scheduler shall hold that week's hand-picked slots fixed, exactly as `/regenerate` does; see `../week-planner/overrides.md`.
 
 ## Tests covering this
 

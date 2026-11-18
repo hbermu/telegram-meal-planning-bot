@@ -270,6 +270,7 @@ def test_weekly_job_passes_current_week_entries_as_history(
         week_start: Any,
         rng: Any,
         allow_partial: Any,
+        overrides: Any = (),
     ) -> Any:
         captured["history"] = list(history)
         return real_plan_week(catalogue, history, settings, week_start, rng, allow_partial)

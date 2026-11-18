@@ -34,6 +34,9 @@ def aggregate(
 ) -> tuple[ShoppingGroup, ...]:
     totals: dict[int, float] = defaultdict(float)
     for entry in plan.entries:
+        # A slot nobody is cooking buys nothing.
+        if entry.dish_id is None:
+            continue
         for ingredient in dishes[entry.dish_id].ingredients:
             totals[ingredient.food_id] += ingredient.quantity
 

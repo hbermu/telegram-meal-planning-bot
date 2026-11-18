@@ -16,6 +16,7 @@ none
 
 1. The aggregation shall take a plan's dishes with their ingredients and shall return one line per food with the summed quantity and that food's unit.
 2. The aggregation shall add a food's quantity once per dish occurrence, so a dish drawn on two days contributes twice.
+2b. The aggregation shall skip an entry that carries a note instead of a dish: nobody is cooking it, so it buys nothing. See `../week-planner/overrides.md`.
 3. The aggregation shall group foods by category in the order defined in `../catalog/foods.md`.
 4. The aggregation shall sort foods alphabetically within a category, case-insensitively.
 5. The aggregation shall round a summed quantity to the nearest whole number for units `g` and `ml`, and to one decimal place for unit `unit`, dropping a trailing `.0`.
@@ -36,7 +37,7 @@ none
 
 ## Tests covering this
 
-- `tests/test_shopping.py` — half-up rounding pinned at the ties for every unit; a food used by three dishes sums across them; a dish drawn twice counts twice; category order and alphabetical order within a category; rounding for each unit; empty categories omitted; purity, by calling twice and comparing
+- `tests/test_shopping.py` — half-up rounding pinned at the ties for every unit; a food used by three dishes sums across them; a dish drawn twice counts twice; category order and alphabetical order within a category; rounding for each unit; empty categories omitted; purity, by calling twice and comparing; a slot nobody cooks buys nothing
 - `tests/test_formatting.py` — splitting at a category boundary when over the length limit
 
 ## Non-goals

@@ -18,6 +18,7 @@ from meal_planning_bot.formatting import (
     HELP_BUTTON,
     NEXT_WEEK_BUTTON,
     NO_BUTTON,
+    OVERRIDE_CHANGE_BUTTON,
     PLAN_BUTTON,
     REGENERATE_BUTTON,
     SETTINGS_BUTTON,
@@ -59,6 +60,7 @@ def plan_menu(is_next: bool) -> Keyboard:
         else (NEXT_WEEK_BUTTON, f"menu:plan:{NEXT}")
     )
     return (
+        ((OVERRIDE_CHANGE_BUTTON, f"ov:day:{week}"),),
         ((REGENERATE_BUTTON, f"menu:regen:{week}"), (SHOPPING_BUTTON, f"menu:shopping:{week}")),
         (other,),
         ((BACK_BUTTON, MAIN),),

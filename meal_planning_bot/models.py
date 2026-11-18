@@ -101,7 +101,12 @@ class Dish:
 class PlanEntry:
     day: int
     slot: Slot
-    dish_id: int
+    # A note instead of a dish is a slot nobody is cooking -- eating out, or
+    # something the catalogue does not have. Exactly one of the two is set, and
+    # a note only ever exists on an entry someone chose by hand.
+    dish_id: int | None
+    note: str | None = None
+    override: bool = False
 
 
 @dataclass(frozen=True)

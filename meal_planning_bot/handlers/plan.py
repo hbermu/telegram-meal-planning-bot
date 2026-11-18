@@ -44,7 +44,7 @@ from meal_planning_bot.weeks import (
     resolve_week,
 )
 
-_DAY_NAMES: dict[str, int] = {
+DAY_NAMES: dict[str, int] = {
     "lunes": 0,
     "martes": 1,
     "miercoles": 2,
@@ -57,7 +57,7 @@ _DAY_NAMES: dict[str, int] = {
     "5": 4,
 }
 
-_SLOT_NAMES: dict[str, Slot] = {
+SLOT_NAMES: dict[str, Slot] = {
     "desayuno": Slot.BREAKFAST,
     "snack1": Slot.SNACK1,
     "comida": Slot.LUNCH,
@@ -66,7 +66,10 @@ _SLOT_NAMES: dict[str, Slot] = {
 }
 
 
-def _fold(text: str) -> str:
+def fold(text: str) -> str:
+    """Lower-cased and stripped of accents, so a weekday typed with an accent
+    is the same token as one without. Shared with `override.py`, which reads
+    the same days and slots."""
     normalized = unicodedata.normalize("NFKD", text.strip().lower())
     return "".join(ch for ch in normalized if not unicodedata.combining(ch))
 
@@ -74,18 +77,18 @@ def _fold(text: str) -> str:
 def parse_swap_args(args: Sequence[str]) -> tuple[int, Slot, bool]:
     tokens = list(args)
     is_next = False
-    if tokens and _fold(tokens[-1]) == NEXT_KEYWORD:
+    if tokens and fold(tokens[-1]) == NEXT_KEYWORD:
         is_next = True
         tokens = tokens[:-1]
     if len(tokens) != 2:
         raise ArgumentError("swap requires exactly a day and a slot")
 
-    day_token, slot_token = _fold(tokens[0]), _fold(tokens[1])
-    if day_token not in _DAY_NAMES:
+    day_token, slot_token = fold(tokens[0]), fold(tokens[1])
+    if day_token not in DAY_NAMES:
         raise ArgumentError(f"unknown day: {tokens[0]!r}")
-    if slot_token not in _SLOT_NAMES:
+    if slot_token not in SLOT_NAMES:
         raise ArgumentError(f"unknown slot: {tokens[1]!r}")
-    return _DAY_NAMES[day_token], _SLOT_NAMES[slot_token], is_next
+    return DAY_NAMES[day_token], SLOT_NAMES[slot_token], is_next
 
 
 async def show_plan(
@@ -178,6 +181,8 @@ async def regenerate(
             week_start,
             get_rng(context),
             get_allow_partial_plan(context),
+            # Held fixed: what somebody chose by hand survives a re-draw.
+            repo.plan_overrides(conn, week_start),
         )
     except PlannerFailure as exc:
         await update.reply_text(

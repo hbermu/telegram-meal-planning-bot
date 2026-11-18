@@ -426,6 +426,16 @@ def count_dishes_by_meal_type(conn: sqlite3.Connection) -> dict[MealType, int]:
 # --- plans and history -------------------------------------------------
 
 
+def _entry_from_row(row: sqlite3.Row) -> PlanEntry:
+    return PlanEntry(
+        day=row["day"],
+        slot=Slot(row["slot"]),
+        dish_id=row["dish_id"],
+        note=row["note"],
+        override=bool(row["override"]),
+    )
+
+
 def save_plan(conn: sqlite3.Connection, plan: Plan) -> None:
     generated_at = datetime.now(UTC).isoformat()
     week_start_iso = plan.week_start.isoformat()
@@ -441,8 +451,12 @@ def save_plan(conn: sqlite3.Connection, plan: Plan) -> None:
         ).fetchone()["id"]
         conn.execute("DELETE FROM plan_entries WHERE plan_id = ?", (plan_id,))
         conn.executemany(
-            "INSERT INTO plan_entries (plan_id, day, slot, dish_id) VALUES (?, ?, ?, ?)",
-            [(plan_id, e.day, e.slot.value, e.dish_id) for e in plan.entries],
+            "INSERT INTO plan_entries (plan_id, day, slot, dish_id, note, override) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (plan_id, e.day, e.slot.value, e.dish_id, e.note, int(e.override))
+                for e in plan.entries
+            ],
         )
 
 
@@ -453,7 +467,7 @@ def get_plan(conn: sqlite3.Connection, week_start: date) -> Plan | None:
     if plan_row is None:
         return None
     entry_rows = conn.execute(
-        "SELECT day, slot, dish_id FROM plan_entries WHERE plan_id = ?",
+        "SELECT day, slot, dish_id, note, override FROM plan_entries WHERE plan_id = ?",
         (plan_row["id"],),
     ).fetchall()
     # Ordered in Python, not SQL: ORDER BY slot sorts the column alphabetically, which
@@ -462,22 +476,34 @@ def get_plan(conn: sqlite3.Connection, week_start: date) -> Plan | None:
     # get the meals out of sequence.
     entries = tuple(
         sorted(
-            (
-                PlanEntry(day=r["day"], slot=Slot(r["slot"]), dish_id=r["dish_id"])
-                for r in entry_rows
-            ),
+            (_entry_from_row(r) for r in entry_rows),
             key=lambda e: (e.day, SLOT_ORDER.index(e.slot)),
         )
     )
     return Plan(week_start=week_start, entries=entries, relaxation=plan_row["relaxation"])
 
 
+def plan_overrides(conn: sqlite3.Connection, week_start: date) -> tuple[PlanEntry, ...]:
+    """The entries of that week someone chose by hand. Read before a plan is
+    re-drawn, so the draw can hold them fixed."""
+    rows = conn.execute(
+        "SELECT pe.day AS day, pe.slot AS slot, pe.dish_id AS dish_id, pe.note AS note, "
+        "pe.override AS override FROM plans p JOIN plan_entries pe ON pe.plan_id = p.id "
+        "WHERE p.week_start = ? AND pe.override = 1",
+        (week_start.isoformat(),),
+    ).fetchall()
+    return tuple(_entry_from_row(row) for row in rows)
+
+
 def scheduled_history(conn: sqlite3.Connection, around: date, days: int = 60) -> list[ServedRecord]:
     lower = around - timedelta(days=days)
     upper = around + timedelta(days=days)
+    # A slot nobody cooked carries a note and no dish, and a note is not a dish
+    # that can come back too soon: it is no part of the cooldown history.
     rows = conn.execute(
         "SELECT p.week_start AS week_start, pe.day AS day, pe.dish_id AS dish_id "
-        "FROM plans p JOIN plan_entries pe ON pe.plan_id = p.id"
+        "FROM plans p JOIN plan_entries pe ON pe.plan_id = p.id "
+        "WHERE pe.dish_id IS NOT NULL"
     ).fetchall()
     records: list[ServedRecord] = []
     for row in rows:

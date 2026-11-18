@@ -6,12 +6,14 @@ from meal_planning_bot.formatting import (
     COMMANDS,
     DAY_LABELS,
     MEAL_TYPE_LABELS,
+    OVERRIDE_MARK,
     PARTIAL_PLAN_NOTICE,
     SLOT_LABELS,
     render_day,
     render_dish,
     render_dishes_page,
     render_help,
+    render_override_kcal_notice,
     render_plan,
     render_relaxation_notice,
     render_shopping,
@@ -242,3 +244,35 @@ def test_render_day_omits_the_slots_a_partial_plan_never_drew() -> None:
     assert SLOT_LABELS[Slot.LUNCH] in text
     assert SLOT_LABELS[Slot.DINNER] not in text
     assert "Sin planificar" not in text
+
+
+def test_a_hand_picked_slot_is_marked_and_a_note_carries_no_calories() -> None:
+    plan, dishes = _full_week_plan()
+    entries = []
+    for entry in plan.entries:
+        if entry.day == 0 and entry.slot is Slot.DINNER:
+            entries.append(replace(entry, dish_id=None, note="Fuera", override=True))
+        elif entry.day == 0 and entry.slot is Slot.LUNCH:
+            entries.append(replace(entry, override=True))
+        else:
+            entries.append(entry)
+    monday = render_day(replace(plan, entries=tuple(entries)), dishes, day=0)
+
+    assert f"Cena: Fuera {OVERRIDE_MARK}" in monday
+    assert f"({OVERRIDE_MARK}" not in monday
+    assert monday.count(OVERRIDE_MARK) == 2
+    # The note feeds the day nothing, so the total is the other four slots.
+    kcal = [
+        dishes[e.dish_id].kcal
+        for e in entries
+        if e.day == 0 and e.dish_id is not None
+    ]
+    assert f"Total: {sum(kcal)} kcal" in monday
+
+
+def test_the_kcal_notice_names_the_days_it_was_given() -> None:
+    assert render_override_kcal_notice([]) == ""
+    one = render_override_kcal_notice([0])
+    assert "lunes" in one
+    two = render_override_kcal_notice([0, 3])
+    assert "lunes y jueves" in two

@@ -472,3 +472,67 @@ def test_saved_plan_round_trips_with_slots_in_order(conn: sqlite3.Connection) ->
 
     assert read_back is not None
     assert read_back.entries == saved.entries
+
+
+# --- hand-picked plan entries ----------------------------------------------
+
+
+def _lunch_dish(conn: sqlite3.Connection, name: str = "Arroz blanco") -> int:
+    food_id = _food(conn, name=f"{name} food")
+    dish = repo.create_dish(
+        conn,
+        name=name,
+        meal_type=MealType.LUNCH,
+        ingredients=[DishIngredient(food_id=food_id, quantity=100.0)],
+    )
+    return dish.id
+
+
+def test_a_hand_picked_entry_round_trips(conn: sqlite3.Connection) -> None:
+    dish_id = _lunch_dish(conn)
+    week_start = date(2026, 9, 14)
+    entries = (
+        PlanEntry(day=0, slot=Slot.LUNCH, dish_id=dish_id, override=True),
+        PlanEntry(day=1, slot=Slot.LUNCH, dish_id=None, note="Fuera", override=True),
+        PlanEntry(day=2, slot=Slot.LUNCH, dish_id=dish_id),
+    )
+    repo.save_plan(conn, Plan(week_start=week_start, entries=entries))
+
+    plan = repo.get_plan(conn, week_start)
+    assert plan is not None
+    assert plan.entries == entries
+
+
+def test_plan_overrides_returns_only_the_hand_picked_entries(conn: sqlite3.Connection) -> None:
+    dish_id = _lunch_dish(conn)
+    week_start = date(2026, 9, 14)
+    picked = PlanEntry(day=1, slot=Slot.LUNCH, dish_id=None, note="Fuera", override=True)
+    repo.save_plan(
+        conn,
+        Plan(
+            week_start=week_start,
+            entries=(PlanEntry(day=0, slot=Slot.LUNCH, dish_id=dish_id), picked),
+        ),
+    )
+
+    assert repo.plan_overrides(conn, week_start) == (picked,)
+    assert repo.plan_overrides(conn, date(2026, 9, 21)) == ()
+
+
+def test_a_note_is_no_part_of_the_cooldown_history(conn: sqlite3.Connection) -> None:
+    dish_id = _lunch_dish(conn)
+    week_start = date(2026, 9, 14)
+    repo.save_plan(
+        conn,
+        Plan(
+            week_start=week_start,
+            entries=(
+                PlanEntry(day=0, slot=Slot.LUNCH, dish_id=dish_id, override=True),
+                PlanEntry(day=1, slot=Slot.LUNCH, dish_id=None, note="Fuera", override=True),
+            ),
+        ),
+    )
+
+    history = repo.scheduled_history(conn, week_start)
+
+    assert [record.dish_id for record in history] == [dish_id]

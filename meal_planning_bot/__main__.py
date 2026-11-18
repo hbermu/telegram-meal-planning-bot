@@ -37,6 +37,7 @@ from meal_planning_bot.handlers.catalog import (
 )
 from meal_planning_bot.handlers.help import cmd_help, cmd_myid, cmd_start, cmd_unknown
 from meal_planning_bot.handlers.menu import on_menu_callback
+from meal_planning_bot.handlers.override import cmd_override, on_override_callback
 from meal_planning_bot.handlers.plan import (
     cmd_plan,
     cmd_regenerate,
@@ -69,6 +70,7 @@ Application = PTBApplication[Any, Any, Any, Any, Any, Any]
 
 _CATALOG_CALLBACK_PATTERN = r"^(dishes|foods|dish|restore):"
 _MENU_CALLBACK_PATTERN = r"^menu:"
+_OVERRIDE_CALLBACK_PATTERN = r"^ov:"
 _WIZARD_CALLBACK_PATTERN = (
     r"^(meal|ing|ingfood|unit|cat|kcalref|steps|kcal|confirm|wizdish|wizfood"
     r"|field|ffield|deletedish|deletefood):"
@@ -86,6 +88,7 @@ def _register_handlers(app: Application, config: Config) -> None:
         ("shopping", cmd_shopping),
         ("regenerate", cmd_regenerate),
         ("swap", cmd_swap),
+        ("override", cmd_override),
         ("dishes", cmd_dishes),
         ("dish", cmd_dish),
         ("foods", cmd_foods),
@@ -120,6 +123,11 @@ def _register_handlers(app: Application, config: Config) -> None:
     gated_menu_callback = gate(on_menu_callback)
     app.add_handler(
         CallbackQueryHandler(bridge(gated_menu_callback), pattern=_MENU_CALLBACK_PATTERN)
+    )
+
+    gated_override_callback = gate(on_override_callback)
+    app.add_handler(
+        CallbackQueryHandler(bridge(gated_override_callback), pattern=_OVERRIDE_CALLBACK_PATTERN)
     )
 
     gated_catalog_callback = gate(on_catalog_callback)

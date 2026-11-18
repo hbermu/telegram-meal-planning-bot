@@ -11,6 +11,7 @@ from meal_planning_bot.models import (
     SLOT_ORDER,
     Dish,
     MealType,
+    PlanEntry,
     PlannerSettings,
     ServedRecord,
     Slot,
@@ -25,6 +26,7 @@ from meal_planning_bot.planner import (
     _candidate_ok,
     _ladder,
     day_window,
+    days_outside_window,
     eligible_slots,
     plan_week,
     redraw_slot,
@@ -525,3 +527,122 @@ def test_redraw_still_works_on_a_planned_slot_of_a_partial_plan() -> None:
     after = next(e for e in redrawn.entries if e.day == 0)
     assert after.dish_id != before.dish_id
     assert [e for e in redrawn.entries if e.day != 0] == [e for e in plan.entries if e.day != 0]
+
+
+# --- pinned slots ----------------------------------------------------------
+
+
+def _pinned_dish(cat: list[Dish], day: int, slot: Slot) -> PlanEntry:
+    chosen = next(d for d in cat if d.meal_type is SLOT_MEAL_TYPE[slot])
+    return PlanEntry(day=day, slot=slot, dish_id=chosen.id, override=True)
+
+
+def test_a_pinned_dish_survives_the_draw() -> None:
+    cat = catalogue(6, {t: 400 for t in MealType})
+    held = _pinned_dish(cat, 2, Slot.DINNER)
+
+    plan = plan_week(cat, [], DEFAULT_SETTINGS, WEEK_START, Random(1), False, [held])
+
+    assert held in plan.entries
+    assert len(plan.entries) == 25
+
+
+def test_a_pinned_dish_is_obeyed_even_against_the_constraints() -> None:
+    cat = catalogue(6, {t: 400 for t in MealType})
+    # The same lunch two days running breaks the 14-day lunch cooldown.
+    lunch = next(d for d in cat if d.meal_type is MealType.LUNCH)
+    held = [
+        PlanEntry(day=0, slot=Slot.LUNCH, dish_id=lunch.id, override=True),
+        PlanEntry(day=1, slot=Slot.LUNCH, dish_id=lunch.id, override=True),
+    ]
+
+    plan = plan_week(cat, [], DEFAULT_SETTINGS, WEEK_START, Random(1), False, held)
+
+    assert all(entry in plan.entries for entry in held)
+
+
+def test_the_rest_of_the_day_is_drawn_around_a_pinned_dish() -> None:
+    cat = [
+        *[dish(i, MealType.BREAKFAST, 400, foods=[i]) for i in range(1, 7)],
+        *[dish(i, MealType.SNACK, 400, foods=[i]) for i in range(7, 19)],
+        *[dish(i, MealType.LUNCH, 400, foods=[i]) for i in range(19, 25)],
+        # Two dinners: a cheap one and an expensive one. The day only lands in
+        # the window with the cheap one, so pinning the breakfast must not stop
+        # the draw from picking it.
+        dish(25, MealType.DINNER, 400, foods=[25]),
+        dish(26, MealType.DINNER, 1200, foods=[26]),
+    ]
+    held = PlanEntry(day=0, slot=Slot.BREAKFAST, dish_id=1, override=True)
+
+    plan = plan_week(cat, [], DEFAULT_SETTINGS, WEEK_START, Random(3), False, [held])
+
+    by_id = {d.id: d for d in cat}
+    monday = [e for e in plan.entries if e.day == 0]
+    assert held in monday
+    total = sum(by_id[e.dish_id].kcal for e in monday if e.dish_id is not None)
+    low, high = day_window(DEFAULT_SETTINGS)
+    assert low <= total <= high
+
+
+def test_a_note_drops_that_days_calorie_floor_and_buys_nothing() -> None:
+    cat = catalogue(6, {t: 400 for t in MealType})
+    held = PlanEntry(day=1, slot=Slot.LUNCH, dish_id=None, note="Fuera", override=True)
+
+    plan = plan_week(cat, [], DEFAULT_SETTINGS, WEEK_START, Random(1), False, [held])
+
+    by_id = {d.id: d for d in cat}
+    tuesday = [e for e in plan.entries if e.day == 1]
+    assert held in tuesday
+    total = sum(by_id[e.dish_id].kcal for e in tuesday if e.dish_id is not None)
+    low, high = day_window(DEFAULT_SETTINGS)
+    assert total < low, "a day nobody fully cooks is allowed under the target"
+    assert total <= high
+
+
+def test_a_pin_the_week_cannot_hold_is_laid_on_top_instead_of_refused() -> None:
+    # One dinner of 2000 kcal: pinned at lunch it can never land in a window
+    # built for a 400 kcal lunch, so no relaxation step can hold it.
+    cat = catalogue(6, {t: 400 for t in MealType})
+    monster = dish(99, MealType.DINNER, 20_000, foods=[99])
+    held = PlanEntry(day=0, slot=Slot.LUNCH, dish_id=monster.id, override=True)
+
+    plan = plan_week([*cat, monster], [], DEFAULT_SETTINGS, WEEK_START, Random(1), False, [held])
+
+    assert held in plan.entries
+    assert len(plan.entries) == 25
+
+
+def test_days_outside_window_names_the_day_a_pin_pushed_out() -> None:
+    cat = catalogue(6, {t: 400 for t in MealType})
+    monster = dish(99, MealType.DINNER, 20_000, foods=[99])
+    held = PlanEntry(day=0, slot=Slot.LUNCH, dish_id=monster.id, override=True)
+    plan = plan_week([*cat, monster], [], DEFAULT_SETTINGS, WEEK_START, Random(1), False, [held])
+
+    by_id = {d.id: d for d in [*cat, monster]}
+    assert days_outside_window(plan, by_id, DEFAULT_SETTINGS) == (0,)
+
+
+def test_redrawing_a_pinned_slot_releases_it() -> None:
+    cat = catalogue(6, {t: 400 for t in MealType})
+    held = _pinned_dish(cat, 2, Slot.DINNER)
+    plan = plan_week(cat, [], DEFAULT_SETTINGS, WEEK_START, Random(1), False, [held])
+
+    redrawn = redraw_slot(
+        plan, cat, [], DEFAULT_SETTINGS, WEEK_START, 2, Slot.DINNER, Random(7)
+    )
+
+    entry = next(e for e in redrawn.entries if e.day == 2 and e.slot is Slot.DINNER)
+    assert entry.override is False
+    assert entry.note is None
+
+
+def test_redrawing_a_slot_beside_a_note_ignores_the_floor() -> None:
+    cat = catalogue(6, {t: 400 for t in MealType})
+    note = PlanEntry(day=3, slot=Slot.LUNCH, dish_id=None, note="Fuera", override=True)
+    plan = plan_week(cat, [], DEFAULT_SETTINGS, WEEK_START, Random(1), False, [note])
+
+    redrawn = redraw_slot(
+        plan, cat, [], DEFAULT_SETTINGS, WEEK_START, 3, Slot.DINNER, Random(2)
+    )
+
+    assert note in redrawn.entries

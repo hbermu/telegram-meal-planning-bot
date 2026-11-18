@@ -20,6 +20,9 @@ from meal_planning_bot.formatting import (
     MAIN_MENU_HEADER,
     NEXT_WEEK_BUTTON,
     NO_PLAN_MESSAGE,
+    OVERRIDE_DAY_PROMPT,
+    OVERRIDE_DEFAULT_NOTE,
+    OVERRIDE_DISH_PROMPT,
     PAGINATION_NEXT_BUTTON,
     PARTIAL_PLAN_NOTICE,
     REGENERATE_CONFIRM_PROMPT,
@@ -49,6 +52,12 @@ from meal_planning_bot.handlers.catalog import (
 from meal_planning_bot.handlers.help import cmd_help, cmd_myid, cmd_start, cmd_unknown
 from meal_planning_bot.handlers.keyboards import MAIN, NEXT, NOW, back_to, main_menu
 from meal_planning_bot.handlers.menu import on_menu_callback
+from meal_planning_bot.handlers.override import (
+    WeekendError,
+    cmd_override,
+    on_override_callback,
+    parse_override_args,
+)
 from meal_planning_bot.handlers.plan import (
     cmd_plan,
     cmd_regenerate,
@@ -57,7 +66,15 @@ from meal_planning_bot.handlers.plan import (
     cmd_today,
     parse_swap_args,
 )
-from meal_planning_bot.models import Category, DishIngredient, MealType, Plan, Slot, Unit
+from meal_planning_bot.models import (
+    Category,
+    DishIngredient,
+    MealType,
+    Plan,
+    PlanEntry,
+    Slot,
+    Unit,
+)
 from meal_planning_bot.planner import plan_week
 from meal_planning_bot.repo import planner_settings
 from meal_planning_bot.weeks import ArgumentError
@@ -1128,3 +1145,227 @@ def test_a_button_this_version_does_not_know_opens_the_main_menu(
 ) -> None:
     update = _tap(conn, date(2026, 9, 21), "menu:retirado:3")
     assert update.replies == [MAIN_MENU_HEADER]
+
+
+# --- /override -------------------------------------------------------------
+
+TUESDAY = date(2026, 9, 22)  # the week starts Monday 2026-09-21
+OVERRIDE_WEEK = date(2026, 9, 21)
+
+
+def _override(conn: sqlite3.Connection, args: list[str], today: date = TUESDAY) -> FakeUpdate:
+    update = _update()
+    _run(cmd_override(update, _context(conn, today, args)))
+    return update
+
+
+def test_override_args_read_days_slots_and_the_week() -> None:
+    choice = parse_override_args(["jueves", "cena", "Lasaña", "de", "verdura"], TUESDAY)
+    assert (choice.day, choice.slot, choice.is_next) == (3, Slot.DINNER, False)
+    assert choice.dish_name == "Lasaña de verdura"
+    assert choice.note is None
+
+    numeric = parse_override_args(["2", "comida", "Arroz"], TUESDAY)
+    assert (numeric.day, numeric.slot) == (1, Slot.LUNCH)
+
+    upcoming = parse_override_args(["siguiente", "lunes", "desayuno", "Tostada"], TUESDAY)
+    assert upcoming.is_next is True
+
+    today_choice = parse_override_args(["hoy", "cena", "Sopa"], TUESDAY)
+    assert today_choice.day == TUESDAY.weekday()
+    tomorrow = parse_override_args(["manana", "cena", "Sopa"], TUESDAY)
+    assert tomorrow.day == TUESDAY.weekday() + 1
+
+
+def test_override_args_read_the_out_keyword() -> None:
+    plain = parse_override_args(["jueves", "cena", "fuera"], TUESDAY)
+    assert plain.note == "Fuera"
+    assert plain.dish_name == ""
+
+    detailed = parse_override_args(["jueves", "cena", "fuera", "en", "el", "chino"], TUESDAY)
+    assert detailed.note == "en el chino"
+
+
+def test_override_args_reject_what_they_cannot_read() -> None:
+    for args in (
+        [],
+        ["jueves"],
+        ["jueves", "cena"],
+        ["jueves", "merienda", "Sopa"],
+        ["tracatra", "cena", "Sopa"],
+        ["siguiente", "hoy", "cena", "Sopa"],
+    ):
+        with pytest.raises(ArgumentError):
+            parse_override_args(args, TUESDAY)
+
+
+def test_override_refuses_a_weekend_relative_day() -> None:
+    saturday = date(2026, 9, 26)
+    with pytest.raises(WeekendError):
+        parse_override_args(["hoy", "cena", "Sopa"], saturday)
+    friday = date(2026, 9, 25)
+    with pytest.raises(WeekendError):
+        parse_override_args(["manana", "cena", "Sopa"], friday)
+
+
+def test_override_pins_a_catalogue_dish(conn: sqlite3.Connection) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    chosen = next(d for d in repo.list_dishes(conn) if d.meal_type is MealType.DINNER)
+
+    update = _override(conn, ["jueves", "cena", chosen.name])
+
+    assert chosen.name in update.replies[0]
+    stored = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert stored is not None
+    entry = next(e for e in stored.entries if e.day == 3 and e.slot is Slot.DINNER)
+    assert entry == PlanEntry(day=3, slot=Slot.DINNER, dish_id=chosen.id, override=True)
+
+
+def test_override_pins_a_note_for_a_slot_nobody_cooks(conn: sqlite3.Connection) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+
+    update = _override(conn, ["hoy", "cena", "fuera", "en", "el", "chino"])
+
+    assert "en el chino" in update.replies[0]
+    stored = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert stored is not None
+    entry = next(
+        e for e in stored.entries if e.day == TUESDAY.weekday() and e.slot is Slot.DINNER
+    )
+    assert entry.dish_id is None
+    assert entry.note == "en el chino"
+    assert entry.override is True
+
+
+def test_override_offers_buttons_when_the_name_matches_more_than_one(
+    conn: sqlite3.Connection,
+) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+
+    update = _override(conn, ["jueves", "cena", "dinner-"])
+
+    assert update.replies == [DISH_FUZZY_PROMPT]
+    assert update.markups[0] is not None
+    assert all(data.startswith("ov:set:") for row in update.markups[0] for _l, data in row)
+
+
+def test_override_says_so_when_the_name_matches_nothing(conn: sqlite3.Connection) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    update = _override(conn, ["jueves", "cena", "Inexistente"])
+    assert update.replies == [DISH_NOT_FOUND_MESSAGE]
+    # A typo must never be stored as a note.
+    stored = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert stored is not None
+    assert all(e.note is None for e in stored.entries)
+
+
+def test_override_needs_a_plan_and_a_covered_slot(conn: sqlite3.Connection) -> None:
+    empty = _override(conn, ["jueves", "cena", "fuera"])
+    assert empty.replies == [NO_PLAN_MESSAGE]
+
+    for i in range(6):
+        _seed_dish(conn, MealType.LUNCH, i)
+    _run(cmd_regenerate(_update(), _context(conn, TUESDAY, allow_partial_plan=True)))
+
+    uncovered = _override(conn, ["jueves", "desayuno", "fuera"])
+    assert uncovered.replies == [SLOT_NOT_PLANNED_MESSAGE]
+
+
+def test_override_warns_when_the_day_leaves_the_calorie_window(
+    conn: sqlite3.Connection,
+) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    food_id = _seed_food(conn, name="Enorme")
+    huge = repo.create_dish(
+        conn,
+        name="Cena enorme",
+        meal_type=MealType.DINNER,
+        ingredients=[DishIngredient(food_id=food_id, quantity=100.0)],
+        kcal_override=9000,
+    )
+
+    update = _override(conn, ["jueves", "cena", huge.name])
+
+    assert "Aviso" in update.replies[0]
+
+
+def test_a_pinned_slot_survives_regenerate(conn: sqlite3.Connection) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    _override(conn, ["jueves", "cena", "fuera"])
+
+    _run(cmd_regenerate(_update(), _context(conn, TUESDAY)))
+
+    stored = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert stored is not None
+    entry = next(e for e in stored.entries if e.day == 3 and e.slot is Slot.DINNER)
+    assert entry.note == "Fuera"
+    assert entry.override is True
+
+
+def test_swapping_a_pinned_slot_releases_it(conn: sqlite3.Connection) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    chosen = next(d for d in repo.list_dishes(conn) if d.meal_type is MealType.DINNER)
+    _override(conn, ["jueves", "cena", chosen.name])
+
+    _run(cmd_swap(_update(), _context(conn, TUESDAY, ["jueves", "cena"])))
+
+    stored = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert stored is not None
+    entry = next(e for e in stored.entries if e.day == 3 and e.slot is Slot.DINNER)
+    assert entry.override is False
+
+
+def _override_tap(conn: sqlite3.Connection, data: str) -> FakeUpdate:
+    query = FakeCallbackQuery(data=data)
+    update = _update(callback_query=query)
+    _run(on_override_callback(update, _context(conn, TUESDAY)))
+    assert query.answered
+    return update
+
+
+def test_the_buttons_walk_from_a_day_to_a_dish(conn: sqlite3.Connection) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+
+    days = _override_tap(conn, "ov:day:now")
+    assert days.replies == [OVERRIDE_DAY_PROMPT]
+    thursday = next(
+        data for row in days.markups[0] for _label, data in row if data.endswith(":3")
+    )
+
+    slots = _override_tap(conn, thursday)
+    assert "Jueves" in slots.replies[0]
+    dinner = next(
+        data for row in slots.markups[0] for _label, data in row if ":dinner:" in data
+    )
+
+    dishes = _override_tap(conn, dinner)
+    assert dishes.replies == [OVERRIDE_DISH_PROMPT]
+    pick = next(
+        data for row in dishes.markups[0] for _label, data in row if data.startswith("ov:set:")
+    )
+
+    done = _override_tap(conn, pick)
+    assert "Jueves" in done.replies[0]
+    stored = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert stored is not None
+    entry = next(e for e in stored.entries if e.day == 3 and e.slot is Slot.DINNER)
+    assert entry.override is True
+    assert entry.dish_id == int(pick.split(":")[-1])
+
+
+def test_the_out_button_pins_a_note(conn: sqlite3.Connection) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+
+    update = _override_tap(conn, "ov:out:now:2:lunch")
+
+    assert OVERRIDE_DEFAULT_NOTE in update.replies[0]
+    stored = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert stored is not None
+    entry = next(e for e in stored.entries if e.day == 2 and e.slot is Slot.LUNCH)
+    assert entry.note == OVERRIDE_DEFAULT_NOTE
+
+
+def test_a_retired_override_button_restarts_the_choice(conn: sqlite3.Connection) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    update = _override_tap(conn, "ov:set:now:basura")
+    assert update.replies == [OVERRIDE_DAY_PROMPT]

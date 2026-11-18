@@ -94,16 +94,66 @@ def _candidate_ok(
     return all(abs((day_date - occurrence).days) >= cooldown for occurrence in other_occurrences)
 
 
+Position = tuple[int, Slot]
+
+
+@dataclass(frozen=True)
+class Pinned:
+    """A position someone chose by hand. The planner does not judge it: it
+    holds it, charges the day for it, and draws the rest around it."""
+
+    entry: PlanEntry
+    dish: Dish | None
+
+    @property
+    def kcal(self) -> int:
+        # A slot nobody is cooking feeds the day nothing the planner can count.
+        return self.dish.kcal if self.dish is not None else 0
+
+
+def pin(overrides: Sequence[PlanEntry], catalogue: Sequence[Dish]) -> dict[Position, Pinned]:
+    by_id = {d.id: d for d in catalogue}
+    return {
+        (entry.day, entry.slot): Pinned(
+            entry=entry,
+            # An override can name a dish that has since been archived, and it
+            # still stands: it is what the household decided to eat.
+            dish=by_id.get(entry.dish_id) if entry.dish_id is not None else None,
+        )
+        for entry in overrides
+    }
+
+
+def _bounds(
+    positions: Sequence[Position],
+    pools: Mapping[Slot, Sequence[Dish]],
+    fixed: Mapping[Position, Pinned],
+) -> tuple[dict[Position, int], dict[Position, int]]:
+    cheapest: dict[Position, int] = {}
+    dearest: dict[Position, int] = {}
+    for position in positions:
+        held = fixed.get(position)
+        if held is not None:
+            cheapest[position] = dearest[position] = held.kcal
+            continue
+        pool = pools[position[1]]
+        cheapest[position] = min(d.kcal for d in pool)
+        dearest[position] = max(d.kcal for d in pool)
+    return cheapest, dearest
+
+
 def _prune(
     running: int,
-    remaining: Sequence[Slot],
-    pools: Mapping[Slot, Sequence[Dish]],
+    remaining: Sequence[Position],
+    cheapest: Mapping[Position, int],
+    dearest: Mapping[Position, int],
     low: int,
     high: int,
 ) -> bool:
-    cheapest = sum(min(d.kcal for d in pools[s]) for s in remaining)
-    dearest = sum(max(d.kcal for d in pools[s]) for s in remaining)
-    return running + cheapest > high or running + dearest < low
+    return (
+        running + sum(cheapest[p] for p in remaining) > high
+        or running + sum(dearest[p] for p in remaining) < low
+    )
 
 
 def _positions(slots: Sequence[Slot]) -> tuple[tuple[int, Slot], ...]:
@@ -132,39 +182,71 @@ def _seed_last_served(history: Sequence[ServedRecord]) -> dict[int, date]:
     return last_served
 
 
+@dataclass(frozen=True)
+class Search:
+    """Everything a draw needs that does not change while it runs."""
+
+    positions: tuple[Position, ...]
+    pools: Mapping[Slot, Sequence[Dish]]
+    fixed: Mapping[Position, Pinned]
+    cheapest: Mapping[Position, int]
+    dearest: Mapping[Position, int]
+    floors: Mapping[int, int]
+    week_start: date
+    settings: PlannerSettings
+    high: int
+    rng: Random
+
+
+@dataclass
+class DayState:
+    """The part of a draw that is rebuilt for each day of the week."""
+
+    assigned: list[Dish]
+    food_counts: dict[int, int]
+    running: int
+
+
+def _fits_day(search: Search, day: int, remaining: Sequence[Position], running: int) -> bool:
+    if remaining:
+        return not _prune(
+            running, remaining, search.cheapest, search.dearest, search.floors[day], search.high
+        )
+    return search.floors[day] <= running <= search.high
+
+
 def _fill(
+    search: Search,
     index: int,
-    positions: Sequence[tuple[int, Slot]],
-    pools: Mapping[Slot, Sequence[Dish]],
-    week_start: date,
-    settings: PlannerSettings,
-    low: int,
-    high: int,
-    rng: Random,
-    assigned_today: list[Dish],
-    food_counts_today: dict[int, int],
-    running: int,
+    state: DayState,
     last_served: dict[int, date],
-    chosen: list[int | None],
+    chosen: list[PlanEntry | None],
     node_count: list[int],
 ) -> bool:
-    if index == len(positions):
+    if index == len(search.positions):
         return True
 
-    day, slot = positions[index]
-    day_date = week_start + timedelta(days=day)
-    remaining_today = [s for d, s in positions[index + 1 :] if d == day]
+    day, slot = search.positions[index]
+    day_date = search.week_start + timedelta(days=day)
+    remaining_today = [p for p in search.positions[index + 1 :] if p[0] == day]
 
     # A new day starts a fresh per-day state; the previous day's state is
     # discarded rather than restored, since backtracking into an earlier
     # day re-enters through its own undo path, not through here.
-    if slot is positions[0][1]:
-        assigned_today = []
-        food_counts_today = {}
-        running = 0
+    if slot is search.positions[0][1]:
+        state = DayState(assigned=[], food_counts={}, running=0)
 
-    candidates = list(pools[slot])
-    rng.shuffle(candidates)
+    held = search.fixed.get((day, slot))
+    if held is not None:
+        node_count[0] += 1
+        if node_count[0] > NODE_CAP:
+            raise NodeCapReached
+        return _fill_pinned(
+            search, index, state, last_served, chosen, node_count, held, day_date, remaining_today
+        )
+
+    candidates = list(search.pools[slot])
+    search.rng.shuffle(candidates)
 
     for dish in candidates:
         node_count[0] += 1
@@ -174,44 +256,23 @@ def _fill(
         previous_occurrence = last_served.get(dish.id)
         occurrences = [previous_occurrence] if previous_occurrence is not None else []
         if not _candidate_ok(
-            dish, day_date, assigned_today, food_counts_today, occurrences, settings
+            dish, day_date, state.assigned, state.food_counts, occurrences, search.settings
         ):
             continue
 
-        new_running = running + dish.kcal
-        if remaining_today:
-            if _prune(new_running, remaining_today, pools, low, high):
-                continue
-        elif not (low <= new_running <= high):
+        previous_running = state.running
+        new_running = previous_running + dish.kcal
+        if not _fits_day(search, day, remaining_today, new_running):
             continue
 
-        assigned_today.append(dish)
-        for food_id in _food_ids(dish):
-            food_counts_today[food_id] = food_counts_today.get(food_id, 0) + 1
+        _charge(state, dish, new_running)
         last_served[dish.id] = day_date
-        chosen[index] = dish.id
+        chosen[index] = PlanEntry(day=day, slot=slot, dish_id=dish.id)
 
-        if _fill(
-            index + 1,
-            positions,
-            pools,
-            week_start,
-            settings,
-            low,
-            high,
-            rng,
-            assigned_today,
-            food_counts_today,
-            new_running,
-            last_served,
-            chosen,
-            node_count,
-        ):
+        if _fill(search, index + 1, state, last_served, chosen, node_count):
             return True
 
-        assigned_today.pop()
-        for food_id in _food_ids(dish):
-            food_counts_today[food_id] -= 1
+        _refund(state, dish, previous_running)
         if previous_occurrence is None:
             del last_served[dish.id]
         else:
@@ -219,6 +280,65 @@ def _fill(
         chosen[index] = None
 
     return False
+
+
+def _fill_pinned(
+    search: Search,
+    index: int,
+    state: DayState,
+    last_served: dict[int, date],
+    chosen: list[PlanEntry | None],
+    node_count: list[int],
+    held: Pinned,
+    day_date: date,
+    remaining_today: Sequence[Position],
+) -> bool:
+    # A pinned position has no alternatives and no constraints to satisfy: it is
+    # what somebody said they are eating. It still charges the day, so the rest
+    # of the day is drawn around it, and failing here means the week cannot be
+    # drawn with it held -- which `plan_week` answers by honouring it anyway.
+    day = held.entry.day
+    previous_running = state.running
+    new_running = previous_running + held.kcal
+    if not _fits_day(search, day, remaining_today, new_running):
+        return False
+
+    previous_occurrence = None
+    if held.dish is not None:
+        previous_occurrence = last_served.get(held.dish.id)
+        _charge(state, held.dish, new_running)
+        last_served[held.dish.id] = day_date
+    else:
+        state.running = new_running
+    chosen[index] = held.entry
+
+    if _fill(search, index + 1, state, last_served, chosen, node_count):
+        return True
+
+    if held.dish is not None:
+        _refund(state, held.dish, previous_running)
+        if previous_occurrence is None:
+            del last_served[held.dish.id]
+        else:
+            last_served[held.dish.id] = previous_occurrence
+    else:
+        state.running = previous_running
+    chosen[index] = None
+    return False
+
+
+def _charge(state: DayState, dish: Dish, running: int) -> None:
+    state.assigned.append(dish)
+    for food_id in _food_ids(dish):
+        state.food_counts[food_id] = state.food_counts.get(food_id, 0) + 1
+    state.running = running
+
+
+def _refund(state: DayState, dish: Dish, running: int) -> None:
+    state.assigned.pop()
+    for food_id in _food_ids(dish):
+        state.food_counts[food_id] -= 1
+    state.running = running
 
 
 def _pools_by_slot(catalogue: Sequence[Dish], slots: Sequence[Slot]) -> dict[Slot, list[Dish]]:
@@ -236,6 +356,13 @@ def _floor(low: int, slots: Collection[Slot]) -> int:
     return low if len(slots) == len(SLOT_ORDER) else 0
 
 
+def _day_floors(low: int, fixed: Mapping[Position, Pinned]) -> dict[int, int]:
+    # A day with a slot nobody is cooking cannot reach the target either, for
+    # the same reason a partial plan cannot: the floor goes, the ceiling stays.
+    uncooked = {day for (day, _slot), held in fixed.items() if held.dish is None}
+    return {day: 0 if day in uncooked else low for day in range(5)}
+
+
 def solve(
     catalogue: Sequence[Dish],
     history: Sequence[ServedRecord],
@@ -243,34 +370,40 @@ def solve(
     week_start: date,
     rng: Random,
     slots: Sequence[Slot],
+    fixed: Mapping[Position, Pinned] | None = None,
 ) -> Plan:
     if not slots:
         raise Unsatisfiable("no slot has enough active dishes")
 
+    held = fixed or {}
     pools = _pools_by_slot(catalogue, slots)
-    for slot in slots:
-        if not pools[slot]:
+    positions = _positions(slots)
+    for day, slot in positions:
+        if not pools[slot] and (day, slot) not in held:
             raise Unsatisfiable(f"no active dishes for slot {slot.value}")
 
     low, high = day_window(settings)
     low = _floor(low, slots)
-    positions = _positions(slots)
-    last_served = _seed_last_served(history)
-    chosen: list[int | None] = [None] * len(positions)
+    cheapest, dearest = _bounds(positions, pools, held)
+    search = Search(
+        positions=positions,
+        pools=pools,
+        fixed=held,
+        cheapest=cheapest,
+        dearest=dearest,
+        floors=_day_floors(low, held),
+        week_start=week_start,
+        settings=settings,
+        high=high,
+        rng=rng,
+    )
+    chosen: list[PlanEntry | None] = [None] * len(positions)
 
     solved = _fill(
+        search,
         0,
-        positions,
-        pools,
-        week_start,
-        settings,
-        low,
-        high,
-        rng,
-        [],
-        {},
-        0,
-        last_served,
+        DayState(assigned=[], food_counts={}, running=0),
+        _seed_last_served(history),
         chosen,
         [0],
     )
@@ -278,10 +411,9 @@ def solve(
         raise Unsatisfiable("no plan satisfies the constraints")
 
     entries = []
-    for index, (day, slot) in enumerate(positions):
-        dish_id = chosen[index]
-        assert dish_id is not None
-        entries.append(PlanEntry(day=day, slot=slot, dish_id=dish_id))
+    for entry in chosen:
+        assert entry is not None
+        entries.append(entry)
     return Plan(week_start=week_start, entries=tuple(entries))
 
 
@@ -322,8 +454,14 @@ def redraw_slot(
     day_date = week_start + timedelta(days=day)
     low, high = day_window(settings)
     low = _floor(low, covered)
+    if any(e.day == day and e.dish_id is None for e in other_entries):
+        low = 0
 
-    assigned_today = [by_id[e.dish_id] for e in other_entries if e.day == day]
+    assigned_today = [
+        by_id[e.dish_id]
+        for e in other_entries
+        if e.day == day and e.dish_id is not None and e.dish_id in by_id
+    ]
     food_counts_today: dict[int, int] = defaultdict(int)
     for dish in assigned_today:
         for food_id in _food_ids(dish):
@@ -398,6 +536,44 @@ def _diagnose(
     return Diagnosis(shortfalls, reachable)
 
 
+def apply_overrides(plan: Plan, overrides: Sequence[PlanEntry]) -> Plan:
+    """Lay the hand-picked entries over a plan that was drawn without them.
+    The last resort when no relaxation step can hold them: an override is a
+    decision, not a request, so it is never dropped for being inconvenient."""
+    held = {(entry.day, entry.slot): entry for entry in overrides}
+    covered = {entry.slot for entry in plan.entries}
+    entries = tuple(
+        held.get((entry.day, entry.slot), entry)
+        for entry in plan.entries
+        if entry.slot in covered
+    )
+    return replace(plan, entries=entries)
+
+
+def days_outside_window(
+    plan: Plan, dishes: Mapping[int, Dish], settings: PlannerSettings
+) -> tuple[int, ...]:
+    """The days whose calories no longer land inside the window. A hand-picked
+    slot can push a day out of it, and the bot says so rather than refusing."""
+    covered = {entry.slot for entry in plan.entries}
+    low, high = day_window(settings)
+    low = _floor(low, covered)
+    outside = []
+    for day in range(5):
+        today = [e for e in plan.entries if e.day == day]
+        if not today:
+            continue
+        floor = 0 if any(e.dish_id is None for e in today) else low
+        total = sum(
+            dishes[e.dish_id].kcal
+            for e in today
+            if e.dish_id is not None and e.dish_id in dishes
+        )
+        if not (floor <= total <= high):
+            outside.append(day)
+    return tuple(outside)
+
+
 def plan_week(
     catalogue: Sequence[Dish],
     history: Sequence[ServedRecord],
@@ -405,12 +581,27 @@ def plan_week(
     week_start: date,
     rng: Random,
     allow_partial: bool,
+    overrides: Sequence[PlanEntry] = (),
 ) -> Plan:
     slots = eligible_slots(catalogue) if allow_partial else SLOT_ORDER
+    # An override on a slot this draw is not covering has nowhere to go; the
+    # commands refuse one, and a catalogue that shrank can leave one behind.
+    held = [entry for entry in overrides if entry.slot in slots]
+    fixed = pin(held, catalogue)
     for step, attempt in enumerate(_ladder(settings)):
         try:
-            plan = solve(catalogue, history, attempt, week_start, rng, slots)
+            plan = solve(catalogue, history, attempt, week_start, rng, slots, fixed)
         except (Unsatisfiable, NodeCapReached):
             continue
         return replace(plan, relaxation=step)
+
+    if held:
+        # No step could draw a week around the hand-picked slots. They still
+        # stand: draw the week without them and lay them back on top. The day
+        # they sit in may then miss its calorie window, which the bot reports
+        # rather than treating as a reason to refuse.
+        return apply_overrides(
+            plan_week(catalogue, history, settings, week_start, rng, allow_partial), held
+        )
+
     raise PlannerFailure(_diagnose(catalogue, settings, slots))

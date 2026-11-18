@@ -1,9 +1,10 @@
 import sqlite3
+from pathlib import Path
 
 import pytest
 
 from meal_planning_bot.db import CURRENT_VERSION, MigrationError, apply_pragmas, migrate
-from meal_planning_bot.migrations import SEEDED_SETTINGS
+from meal_planning_bot.migrations import MIGRATIONS, SEEDED_SETTINGS
 
 
 def test_fresh_database_reaches_current_version(conn: sqlite3.Connection) -> None:
@@ -63,3 +64,77 @@ def test_kcal_ref_is_mandatory(conn: sqlite3.Connection) -> None:
 def test_negative_kcal_ref_rejected(conn: sqlite3.Connection) -> None:
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(f"{FOOD_INSERT} ('x', 'g', 'pantry', -1)")
+
+
+# --- migration 2: hand-picked plan entries ---------------------------------
+
+
+def _plan_id(conn: sqlite3.Connection) -> int:
+    conn.execute(
+        "INSERT INTO plans (week_start, generated_at) VALUES ('2026-09-14', '2026-09-13T00:00:00Z')"
+    )
+    row = conn.execute("SELECT id FROM plans WHERE week_start = '2026-09-14'").fetchone()
+    return int(row["id"])
+
+
+def _a_dish(conn: sqlite3.Connection) -> int:
+    conn.execute(
+        "INSERT INTO foods (name, unit, category, kcal_ref) VALUES ('Arroz', 'g', 'pantry', 130)"
+    )
+    conn.execute("INSERT INTO dishes (name, meal_type) VALUES ('Arroz con pollo', 'lunch')")
+    return int(conn.execute("SELECT id FROM dishes").fetchone()["id"])
+
+
+def test_migration_two_keeps_existing_entries_as_drawn(tmp_path: Path) -> None:
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.row_factory = sqlite3.Row
+    apply_pragmas(old)
+    with old:
+        MIGRATIONS[0](old)
+        old.execute("PRAGMA user_version = 1")
+        plan_id = _plan_id(old)
+        dish_id = _a_dish(old)
+        old.execute(
+            "INSERT INTO plan_entries (plan_id, day, slot, dish_id) VALUES (?, 0, 'lunch', ?)",
+            (plan_id, dish_id),
+        )
+    old.close()
+
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    apply_pragmas(conn)
+    migrate(conn)
+
+    row = conn.execute("SELECT * FROM plan_entries").fetchone()
+    assert row["dish_id"] == dish_id
+    assert row["note"] is None
+    assert row["override"] == 0
+    conn.close()
+
+
+def test_a_plan_entry_carries_either_a_dish_or_a_note(conn: sqlite3.Connection) -> None:
+    plan_id = _plan_id(conn)
+    dish_id = _a_dish(conn)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO plan_entries (plan_id, day, slot, dish_id, note, override) "
+            "VALUES (?, 0, 'lunch', ?, 'Fuera', 1)",
+            (plan_id, dish_id),
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO plan_entries (plan_id, day, slot) VALUES (?, 1, 'lunch')", (plan_id,)
+        )
+
+
+def test_a_note_only_exists_on_a_hand_picked_entry(conn: sqlite3.Connection) -> None:
+    plan_id = _plan_id(conn)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO plan_entries (plan_id, day, slot, note, override) "
+            "VALUES (?, 0, 'lunch', 'Fuera', 0)",
+            (plan_id,),
+        )

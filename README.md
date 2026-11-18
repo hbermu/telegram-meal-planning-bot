@@ -10,6 +10,7 @@ The bot speaks Spanish. The code, the documentation, and the commit history are 
 - A daily calorie target with a configurable tolerance
 - Variety rules: no food in more than N dishes a day, and a per-meal-type cooldown before a dish can come back
 - A relaxation ladder that loosens the rules in a fixed order when the catalogue is too small, and says what it loosened
+- Pin a slot by hand — a dish you choose, or a note for a meal nobody is cooking — and it survives the next draw
 - An aggregated shopping list grouped by supermarket category
 - Step-by-step wizards to add dishes and foods from a phone, in a private chat
 - One message per chat to navigate in: replies are edited in place and the commands you type are deleted, so browsing does not fill the chat. Give the bot the delete-messages right in a group, or your commands stay on screen.
@@ -74,7 +75,7 @@ TELEGRAM_BOT_TOKEN=... MEALBOT_ALLOWED_USER_IDS=... MEALBOT_GROUP_CHAT_ID=... \
 
 **Consultation** — `/plan`, `/today`, `/shopping`, `/dishes`, `/dish <name>`, `/foods`
 
-**Plan** — `/regenerate`, `/swap <day> <slot>`
+**Plan** — `/regenerate`, `/swap <day> <slot>`, `/override <day> <slot> <dish|fuera>`
 
 **Catalogue (private chat only)** — `/newdish`, `/editdish`, `/deletedish`, `/newfood`, `/editfood`, `/deletefood`, `/cancel`
 

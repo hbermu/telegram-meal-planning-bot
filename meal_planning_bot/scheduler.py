@@ -71,7 +71,17 @@ def _generate_plan(
     # week's Monday -- that is what makes the cooldown span the boundary.
     history = repo.scheduled_history(conn, today)
     settings = repo.planner_settings(conn)
-    plan = plan_week(catalogue, history, settings, week_start, rng, config.allow_partial_plan)
+    plan = plan_week(
+        catalogue,
+        history,
+        settings,
+        week_start,
+        rng,
+        config.allow_partial_plan,
+        # Held fixed: what somebody chose by hand survives a re-draw, the
+        # scheduled one included.
+        repo.plan_overrides(conn, week_start),
+    )
     repo.save_plan(conn, plan)
     return plan
 

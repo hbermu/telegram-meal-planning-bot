@@ -9,7 +9,12 @@ from meal_planning_bot.__main__ import build_application
 from meal_planning_bot.anchor import Anchors
 from meal_planning_bot.config import Config
 from meal_planning_bot.db import open_database
-from meal_planning_bot.formatting import MEAL_TYPE_LABELS, NO_PLAN_MESSAGE, PRIVATE_ONLY_MESSAGE
+from meal_planning_bot.formatting import (
+    MEAL_TYPE_LABELS,
+    NO_PLAN_MESSAGE,
+    OVERRIDE_MARK,
+    PRIVATE_ONLY_MESSAGE,
+)
 from meal_planning_bot.models import Category, DishIngredient, MealType, Unit
 from meal_planning_bot.weeks import current_week_start
 from tests.fakes import Driver, FakeBot
@@ -256,6 +261,50 @@ async def test_a_tap_after_a_restart_adopts_the_menu_on_screen(tmp_path: Path) -
 
     assert bot.sent == [], "the tap must adopt the message it came from, not post a new one"
     assert len(bot.edited) == 1
+
+    await app.shutdown()
+
+
+async def test_a_hand_picked_meal_reaches_the_plan_the_list_and_the_next_draw(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    conn = open_database(config.db_path)
+    _seed_catalogue_via_repo(conn)
+    bot = FakeBot()
+    app = build_application(config, conn, bot=bot, clock=lambda: TODAY)
+    app.bot_data["rng"] = Random(0)
+    await app.initialize()
+    user = Driver(app, bot, chat_id=PRIVATE_CHAT, user_id=ALLOWED_USER)
+
+    await user.send("/regenerate")
+
+    # Tuesday's dinner becomes a dish of our choosing, pinned.
+    chosen = await user.send("/override hoy cena Sopa de pasta")
+    assert "Cena: Sopa de pasta" in chosen
+    assert OVERRIDE_MARK in chosen
+
+    shopping = await user.send("/shopping")
+    assert "Pasta" in shopping
+
+    # And Wednesday's lunch is not cooked at all.
+    eaten_out = await user.send("/override miercoles comida fuera en el chino")
+    assert "Comida: en el chino" in eaten_out
+
+    plan = await user.send("/plan")
+    assert plan.count(OVERRIDE_MARK) == 2
+
+    # A fresh draw of the same week keeps both and re-draws the rest.
+    await user.send("/regenerate")
+    after = await user.send("/plan")
+    assert "Cena: Sopa de pasta" in after
+    assert "Comida: en el chino" in after
+    assert after.count(OVERRIDE_MARK) == 2
+
+    # The slot nobody cooks buys nothing: Wednesday's lunch rice is gone from
+    # the week's total, which is now four lunches' worth instead of five.
+    list_after = await user.send("/shopping")
+    assert "Arroz: 400 g" in list_after
 
     await app.shutdown()
 
