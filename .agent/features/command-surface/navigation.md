@@ -32,7 +32,7 @@ none
 13. When a user sends `/start`, the bot shall open the main menu.
 14. The main menu shall offer the plan, the day, the shopping list, the catalogue, the settings and the help text.
 15. Every menu below the main one shall carry a button back to the level above it.
-16. The bot shall keep no menu state: every navigation step shall be carried in the tapped button's callback data.
+16. The bot shall keep no menu state: every navigation step shall be carried in the tapped button's callback data. The one exception is the custom-dish prompt of `../week-planner/overrides.md`, which waits for text and is held in memory like a wizard.
 17. When the regenerate button is tapped, the bot shall ask for confirmation and shall change nothing until the confirming button is tapped.
 18. If a tap carries a `menu:` action this version does not know, then the bot shall open the main menu, because an inline keyboard outlives the message it was sent on.
 19. Every command the menu covers shall remain available as a typed command.
@@ -41,7 +41,7 @@ none
 
 ```
 main          Plan · Hoy · Compra · Catálogo · Ajustes · Ayuda
- plan:<week>  Sortear de nuevo · Compra · the other week · back
+ plan:<week>  Cambiar una comida · Sortear de nuevo · Compra · the other week · back
  catalog      Platos · Alimentos · Platos archivados · Alimentos archivados · back
  settings     back
  help         back

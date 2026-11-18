@@ -12,6 +12,7 @@ from meal_planning_bot.db import open_database
 from meal_planning_bot.formatting import (
     MEAL_TYPE_LABELS,
     NO_PLAN_MESSAGE,
+    OVERRIDE_DAY_PROMPT,
     OVERRIDE_MARK,
     PRIVATE_ONLY_MESSAGE,
 )
@@ -305,6 +306,44 @@ async def test_a_hand_picked_meal_reaches_the_plan_the_list_and_the_next_draw(
     # the week's total, which is now four lunches' worth instead of five.
     list_after = await user.send("/shopping")
     assert "Arroz: 400 g" in list_after
+
+    await app.shutdown()
+
+
+async def test_a_custom_dish_is_typed_into_the_button_flow(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    conn = open_database(config.db_path)
+    _seed_catalogue_via_repo(conn)
+    bot = FakeBot()
+    app = build_application(config, conn, bot=bot, clock=lambda: TODAY)
+    app.bot_data["rng"] = Random(0)
+    await app.initialize()
+    user = Driver(app, bot, chat_id=GROUP_CHAT, user_id=ALLOWED_USER, chat_type="group")
+
+    await user.send("/regenerate")
+    days = await user.send("/override")
+    assert days == OVERRIDE_DAY_PROMPT
+    today = _first_button(bot.messages[-1].markup)
+    assert today == "ov:slot:now:1"
+
+    await user.tap(today)
+    await user.tap("ov:pick:now:1:dinner:1")
+    assert _first_button(bot.messages[-1].markup) == "ov:custom:now:1:dinner"
+    await user.tap("ov:custom:now:1:dinner")
+
+    anchor = user.anchor_id
+    bot.deleted.clear()
+    chosen = await user.send("Pizza casera")
+
+    assert "Cena: Pizza casera" in chosen
+    assert OVERRIDE_MARK in chosen
+    assert user.anchor_id == anchor, "the pinned day must replace the prompt in place"
+    assert bot.deleted == [(GROUP_CHAT, user._message_id)], "the typed dish must leave the chat"
+
+    # The prompt is answered: the next message is chatter, not another dish.
+    bot.messages.clear()
+    await user.send("Gracias")
+    assert bot.messages == []
 
     await app.shutdown()
 

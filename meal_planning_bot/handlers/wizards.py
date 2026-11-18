@@ -76,6 +76,7 @@ from meal_planning_bot.handlers import (
     get_clock,
     get_conn,
 )
+from meal_planning_bot.handlers.override import PENDING_NOTE_KEY
 from meal_planning_bot.models import (
     CATEGORY_ORDER,
     Category,
@@ -163,6 +164,7 @@ def _get_wizard(context: WizardContextLike) -> WizardState | None:
 
 
 def _set_wizard(context: WizardContextLike, state: WizardState) -> None:
+    context.user_data.pop(PENDING_NOTE_KEY, None)
     context.user_data[_WIZARD_KEY] = state
 
 

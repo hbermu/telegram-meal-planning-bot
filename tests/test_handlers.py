@@ -3,7 +3,7 @@ import logging
 import random
 import sqlite3
 from dataclasses import dataclass, field, replace
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -20,19 +20,22 @@ from meal_planning_bot.formatting import (
     MAIN_MENU_HEADER,
     NEXT_WEEK_BUTTON,
     NO_PLAN_MESSAGE,
+    OVERRIDE_CUSTOM_BUTTON,
     OVERRIDE_DAY_PROMPT,
-    OVERRIDE_DEFAULT_NOTE,
     OVERRIDE_DISH_PROMPT,
     PAGINATION_NEXT_BUTTON,
+    PAGINATION_PREV_BUTTON,
     PARTIAL_PLAN_NOTICE,
     REGENERATE_CONFIRM_PROMPT,
     RESTORE_AMBIGUOUS_PROMPT,
     RESTORE_NOT_FOUND_MESSAGE,
     SLOT_NOT_PLANNED_MESSAGE,
     SWAP_USAGE_MESSAGE,
+    TODAY_BUTTON,
     WEEKEND_MESSAGE,
     render_help,
     render_my_id,
+    render_override_custom_prompt,
     render_relaxation_notice,
     render_restored_dish,
     render_restored_food,
@@ -50,12 +53,14 @@ from meal_planning_bot.handlers.catalog import (
     parse_callback,
 )
 from meal_planning_bot.handlers.help import cmd_help, cmd_myid, cmd_start, cmd_unknown
-from meal_planning_bot.handlers.keyboards import MAIN, NEXT, NOW, back_to, main_menu
+from meal_planning_bot.handlers.keyboards import MAIN, NEXT, NOW, back_row, back_to, main_menu
 from meal_planning_bot.handlers.menu import on_menu_callback
 from meal_planning_bot.handlers.override import (
+    PENDING_NOTE_KEY,
     WeekendError,
     cmd_override,
     on_override_callback,
+    on_override_text,
     parse_override_args,
 )
 from meal_planning_bot.handlers.plan import (
@@ -66,6 +71,7 @@ from meal_planning_bot.handlers.plan import (
     cmd_today,
     parse_swap_args,
 )
+from meal_planning_bot.handlers.wizards import cmd_newdish
 from meal_planning_bot.models import (
     Category,
     DishIngredient,
@@ -1098,9 +1104,7 @@ def test_the_plan_menu_walks_to_next_week_and_back(conn: sqlite3.Connection) -> 
     following_week = date(2026, 9, 28)
     repo.save_plan(
         conn,
-        plan_week(
-            catalogue, [], planner_settings(conn), following_week, random.Random(2), False
-        ),
+        plan_week(catalogue, [], planner_settings(conn), following_week, random.Random(2), False),
     )
 
     current = _tap(conn, monday, f"menu:plan:{NOW}")
@@ -1112,9 +1116,7 @@ def test_the_plan_menu_walks_to_next_week_and_back(conn: sqlite3.Connection) -> 
 
     following = _tap(conn, monday, f"menu:plan:{NEXT}")
     assert "Plan de la semana que viene" in following.replies[0]
-    assert any(
-        data == f"menu:plan:{NOW}" for row in following.markups[0] for _label, data in row
-    )
+    assert any(data == f"menu:plan:{NOW}" for row in following.markups[0] for _label, data in row)
 
 
 def test_regenerating_from_the_menu_asks_first(conn: sqlite3.Connection) -> None:
@@ -1229,9 +1231,7 @@ def test_override_pins_a_note_for_a_slot_nobody_cooks(conn: sqlite3.Connection) 
     assert "en el chino" in update.replies[0]
     stored = repo.get_plan(conn, OVERRIDE_WEEK)
     assert stored is not None
-    entry = next(
-        e for e in stored.entries if e.day == TUESDAY.weekday() and e.slot is Slot.DINNER
-    )
+    entry = next(e for e in stored.entries if e.day == TUESDAY.weekday() and e.slot is Slot.DINNER)
     assert entry.dish_id is None
     assert entry.note == "en el chino"
     assert entry.override is True
@@ -1328,15 +1328,11 @@ def test_the_buttons_walk_from_a_day_to_a_dish(conn: sqlite3.Connection) -> None
 
     days = _override_tap(conn, "ov:day:now")
     assert days.replies == [OVERRIDE_DAY_PROMPT]
-    thursday = next(
-        data for row in days.markups[0] for _label, data in row if data.endswith(":3")
-    )
+    thursday = next(data for row in days.markups[0] for _label, data in row if data.endswith(":3"))
 
     slots = _override_tap(conn, thursday)
     assert "Jueves" in slots.replies[0]
-    dinner = next(
-        data for row in slots.markups[0] for _label, data in row if ":dinner:" in data
-    )
+    dinner = next(data for row in slots.markups[0] for _label, data in row if ":dinner:" in data)
 
     dishes = _override_tap(conn, dinner)
     assert dishes.replies == [OVERRIDE_DISH_PROMPT]
@@ -1353,16 +1349,125 @@ def test_the_buttons_walk_from_a_day_to_a_dish(conn: sqlite3.Connection) -> None
     assert entry.dish_id == int(pick.split(":")[-1])
 
 
-def test_the_out_button_pins_a_note(conn: sqlite3.Connection) -> None:
+def test_override_without_arguments_asks_for_the_day_with_today_first(
+    conn: sqlite3.Connection,
+) -> None:
     _seed_plan(conn, OVERRIDE_WEEK)
 
-    update = _override_tap(conn, "ov:out:now:2:lunch")
+    update = _override(conn, [])
 
-    assert OVERRIDE_DEFAULT_NOTE in update.replies[0]
+    assert update.replies == [OVERRIDE_DAY_PROMPT]
+    first_row = update.markups[0][0]
+    assert first_row == ((TODAY_BUTTON, "ov:slot:now:1"),)
+    days = [data for row in update.markups[0][1:-1] for _label, data in row]
+    assert days == [f"ov:slot:now:{day}" for day in range(5)]
+
+
+def test_override_without_arguments_needs_a_plan(conn: sqlite3.Connection) -> None:
+    assert _override(conn, []).replies == [NO_PLAN_MESSAGE]
+
+
+def test_the_day_buttons_offer_today_only_on_a_weekday_of_this_week(
+    conn: sqlite3.Connection,
+) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    current = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert current is not None
+    repo.save_plan(conn, replace(current, week_start=OVERRIDE_WEEK + timedelta(days=7)))
+
+    upcoming = _override_tap(conn, "ov:day:next")
+    saturday = _update()
+    _run(cmd_override(saturday, _context(conn, OVERRIDE_WEEK + timedelta(days=5))))
+
+    for update in (upcoming, saturday):
+        labels = [label for row in update.markups[0] for label, _data in row]
+        assert TODAY_BUTTON not in labels
+
+
+def test_the_dish_buttons_are_a_paged_two_by_six_grid_led_by_custom(
+    conn: sqlite3.Connection,
+) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    for index in range(6, 20):
+        _seed_dish(conn, MealType.DINNER, index)
+
+    first = _override_tap(conn, "ov:pick:now:3:dinner:1").markups[0]
+    *grid, paging, back = first
+    assert len(grid) == 6
+    assert all(len(row) == 2 for row in grid)
+    assert grid[0][0] == (OVERRIDE_CUSTOM_BUTTON, "ov:custom:now:3:dinner")
+    assert paging == ((PAGINATION_NEXT_BUTTON, "ov:pick:now:3:dinner:2"),)
+    assert back == back_row("ov:slot:now:3")
+
+    # 20 dinners and the custom button fill a page of 12 and one of 9.
+    second = _override_tap(conn, "ov:pick:now:3:dinner:2").markups[0]
+    *grid, paging, _back = second
+    assert sum(len(row) for row in grid) == 9
+    assert paging == ((PAGINATION_PREV_BUTTON, "ov:pick:now:3:dinner:1"),)
+    assert all(data.startswith("ov:set:") for row in grid for _label, data in row)
+
+    stale = _override_tap(conn, "ov:pick:now:3:dinner:9").markups[0]
+    assert stale == second
+
+
+def _custom_context(conn: sqlite3.Connection) -> FakeContext:
+    context = _context(conn, TUESDAY)
+    query = FakeCallbackQuery(data="ov:custom:now:2:lunch")
+    _run(on_override_callback(_update(callback_query=query), context))
+    return context
+
+
+def test_the_custom_button_pins_the_dish_typed_next(conn: sqlite3.Connection) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    context = _custom_context(conn)
+
+    update = _update()
+    _run(on_override_text(update, context, "  Paella de la abuela "))
+
+    assert "Comida: Paella de la abuela" in update.replies[0]
     stored = repo.get_plan(conn, OVERRIDE_WEEK)
     assert stored is not None
     entry = next(e for e in stored.entries if e.day == 2 and e.slot is Slot.LUNCH)
-    assert entry.note == OVERRIDE_DEFAULT_NOTE
+    assert entry == PlanEntry(
+        day=2, slot=Slot.LUNCH, dish_id=None, note="Paella de la abuela", override=True
+    )
+    assert PENDING_NOTE_KEY not in context.user_data
+
+
+def test_the_custom_prompt_asks_for_the_dish_and_offers_a_way_back(
+    conn: sqlite3.Connection,
+) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    query = FakeCallbackQuery(data="ov:custom:now:2:lunch")
+    update = _update(callback_query=query)
+    _run(on_override_callback(update, _context(conn, TUESDAY)))
+
+    assert update.replies == [render_override_custom_prompt(2, Slot.LUNCH)]
+    assert update.markups[0] == back_to("ov:pick:now:2:lunch:1")
+
+
+def test_text_without_a_custom_prompt_in_that_chat_is_not_a_dish(
+    conn: sqlite3.Connection,
+) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    assert not asyncio.run(on_override_text(_update(), _context(conn, TUESDAY), "Paella"))
+
+    context = _custom_context(conn)
+    assert not asyncio.run(on_override_text(_update(chat_id=2), context, "Paella"))
+    assert PENDING_NOTE_KEY in context.user_data
+
+
+def test_moving_on_from_the_custom_prompt_forgets_it(conn: sqlite3.Connection) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+
+    tapped = _custom_context(conn)
+    query = FakeCallbackQuery(data="ov:pick:now:2:lunch:1")
+    _run(on_override_callback(_update(callback_query=query), tapped))
+    assert PENDING_NOTE_KEY not in tapped.user_data
+
+    wizard = _custom_context(conn)
+    _run(cmd_newdish(_update(), wizard))
+    assert PENDING_NOTE_KEY not in wizard.user_data
 
 
 def test_a_retired_override_button_restarts_the_choice(conn: sqlite3.Connection) -> None:

@@ -1,14 +1,16 @@
 # Week Planner — overrides
 
-> Choosing by hand what one slot is, instead of letting the draw decide: a dish from the catalogue, or a note for a slot nobody is cooking. The chosen slot is pinned — re-drawing the week keeps it and draws the rest of the week around it — and the bot obeys it even when it breaks a constraint, saying so rather than refusing.
+> Choosing by hand what one slot is, instead of letting the draw decide: a dish from the catalogue, or a note — a dish typed by hand that the catalogue does not have, or a slot nobody is cooking. The chosen slot is pinned — re-drawing the week keeps it and draws the rest of the week around it — and the bot obeys it even when it breaks a constraint, saying so rather than refusing.
 
 ## Source files
 
-- `meal_planning_bot/handlers/override.py` — `/override`, its argument grammar, and the button flow
+- `meal_planning_bot/handlers/override.py` — `/override`, its argument grammar, the button flow, and the typed custom dish
+- `meal_planning_bot/__main__.py` — routes plain text to a waiting custom-dish prompt before any wizard
+- `meal_planning_bot/handlers/wizards.py` — starting a wizard forgets a waiting custom-dish prompt
 - `meal_planning_bot/planner.py` — `Pinned`, `pin`, the pinned branch of the search, `apply_overrides`, `days_outside_window`
 - `meal_planning_bot/models.py` — `PlanEntry`'s `note` and `override`
 - `meal_planning_bot/repo.py` — persists the two columns and reads back a week's pinned entries with `plan_overrides`
-- `meal_planning_bot/formatting.py` — the mark on a chosen slot, the calorie warning, the button labels
+- `meal_planning_bot/formatting.py` — the mark on a chosen slot, the calorie warning, the button labels, the custom-dish prompt
 - `meal_planning_bot/handlers/keyboards.py` — the plan menu's entry into the flow
 
 ## Settings used
@@ -38,12 +40,21 @@
 19. A note shall contribute nothing to the shopping list and nothing to the cooldown history, because nobody cooks it and no dish was served.
 20. When a pinned slot is re-drawn with `/swap`, the bot shall release it: the new entry is a drawn one, and that is how an override is undone.
 21. A rendered day shall mark every slot that was chosen by hand, and shall show a note without calories and outside the day's total.
-22. The menu shall reach the whole flow with buttons: a day, then a slot, then the active dishes of that slot's meal type or the no-cooking button.
+22. When a user sends `/override` with no arguments, or taps the plan menu's change button, the bot shall walk the choice with buttons: a day, then a slot, then what to eat.
+23. If `/override` is sent with no arguments and no plan exists for the current week, then the bot shall say so and shall suggest `/regenerate`.
+24. The day step shall offer Monday to Friday, and while it addresses the current week on a weekday it shall offer `Hoy` above them as the first button.
+25. The dish step shall show the active dishes of the slot's meal type in a grid of two columns and at most six rows, led by a custom-dish button, with a previous-page and a next-page button below the grid whenever there is a page that way, and a back button to the slot step.
+26. If a dish-step button names a page past the last one, then the bot shall show the last page.
+27. When the custom-dish button is tapped, the bot shall ask for the dish as text, with a back button to the dish step, and the next text message that user sends in that chat shall be pinned to the slot as a note.
+28. The custom-dish prompt shall ask for a reply to it in a group, because a bot in a group may only see messages that reply to it.
+29. When the user taps any button of the flow or starts a wizard while the custom-dish prompt waits, the bot shall forget the prompt, so that a later message is never pinned by mistake.
+30. The custom-dish prompt shall be held in memory only, like a wizard, so a restart forgets it.
 
 ## Commands
 
 | Command | Where | Who | Effect |
 |---------|-------|-----|--------|
+| `/override` | both | allow-listed | Asks for the day, the slot and the dish with buttons |
 | `/override [siguiente] <day> <slot> <dish>` | both | allow-listed | Pins that dish to that slot |
 | `/override [siguiente] <day> <slot> fuera [text]` | both | allow-listed | Pins a note to that slot |
 
@@ -52,10 +63,10 @@
 - `tests/test_planner.py` — a pinned dish survives the draw; it is obeyed against the cooldown; the rest of the day is drawn around it; a note drops the day's floor; a pin no week can hold is laid on top instead of refused; `days_outside_window` names the day a pin pushed out; re-drawing a pinned slot releases it
 - `tests/test_repo.py` — a hand-picked entry round-trips; `plan_overrides` returns only the pinned entries; a note is no part of the cooldown history
 - `tests/test_migrations.py` — migration 2 keeps existing entries as drawn; an entry cannot carry both a dish and a note, or neither; a note cannot exist on a drawn entry
-- `tests/test_handlers.py` — the argument grammar in words, numbers, `hoy`, `mañana` and `siguiente`; the `fuera` keyword with and without text; a weekend relative day; an unknown name; an ambiguous name; an uncovered slot; no plan; the calorie warning; a pin surviving `/regenerate`; `/swap` releasing it; the button flow from a day to a dish; the no-cooking button
+- `tests/test_handlers.py` — the argument grammar in words, numbers, `hoy`, `mañana` and `siguiente`; the `fuera` keyword with and without text; a weekend relative day; an unknown name; an ambiguous name; an uncovered slot; no plan; the calorie warning; a pin surviving `/regenerate`; `/swap` releasing it; the button flow from a day to a dish; `/override` alone opens it with `Hoy` first, and without a plan says so; `Hoy` only on a weekday of the current week; the two-by-six dish grid led by the custom button, its paging and a page past the last; the custom button pins the next text in that chat and nothing in another chat; a tap or a wizard forgets the prompt
 - `tests/test_shopping.py` — a slot nobody cooks buys nothing
 - `tests/test_formatting.py` — a hand-picked slot is marked and a note carries no calories
-- `tests/test_integration.py` — a hand-picked meal reaches the plan, the shopping list and the next draw
+- `tests/test_integration.py` — a hand-picked meal reaches the plan, the shopping list and the next draw; a custom dish typed into the button flow in a group is pinned in place, its message is deleted, and the next message is left alone
 
 ## Non-goals
 

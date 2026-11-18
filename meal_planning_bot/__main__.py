@@ -28,6 +28,7 @@ from meal_planning_bot.anchor import Anchors
 from meal_planning_bot.config import Config, ConfigError, load_config
 from meal_planning_bot.db import open_database
 from meal_planning_bot.formatting import COMMANDS
+from meal_planning_bot.handlers import UpdateLike
 from meal_planning_bot.handlers.catalog import (
     cmd_dish,
     cmd_dishes,
@@ -37,7 +38,11 @@ from meal_planning_bot.handlers.catalog import (
 )
 from meal_planning_bot.handlers.help import cmd_help, cmd_myid, cmd_start, cmd_unknown
 from meal_planning_bot.handlers.menu import on_menu_callback
-from meal_planning_bot.handlers.override import cmd_override, on_override_callback
+from meal_planning_bot.handlers.override import (
+    cmd_override,
+    on_override_callback,
+    on_override_text,
+)
 from meal_planning_bot.handlers.plan import (
     cmd_plan,
     cmd_regenerate,
@@ -47,6 +52,7 @@ from meal_planning_bot.handlers.plan import (
 )
 from meal_planning_bot.handlers.settings import cmd_set, cmd_settings
 from meal_planning_bot.handlers.wizards import (
+    WizardContextLike,
     cmd_cancel,
     cmd_deletedish,
     cmd_deletefood,
@@ -75,6 +81,13 @@ _WIZARD_CALLBACK_PATTERN = (
     r"^(meal|ing|ingfood|unit|cat|kcalref|steps|kcal|confirm|wizdish|wizfood"
     r"|field|ffield|deletedish|deletefood):"
 )
+
+
+async def _on_text(update: UpdateLike, context: WizardContextLike, text: str) -> None:
+    # Plain text answers whichever prompt asked for it: the custom dish of
+    # /override when one is waiting in this chat, otherwise a wizard's step.
+    if not await on_override_text(update, context, text):
+        await on_wizard_message(update, context, text)
 
 
 def _register_handlers(app: Application, config: Config) -> None:
@@ -115,10 +128,8 @@ def _register_handlers(app: Application, config: Config) -> None:
     gated_unknown = gate(cmd_unknown)
     app.add_handler(MessageHandler(filters.COMMAND, bridge(gated_unknown)))
 
-    gated_wizard_message = gate(on_wizard_message)
-    app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, bridge_wizard_text(gated_wizard_message))
-    )
+    gated_text = gate(_on_text)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bridge_wizard_text(gated_text)))
 
     gated_menu_callback = gate(on_menu_callback)
     app.add_handler(

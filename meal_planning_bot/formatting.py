@@ -74,18 +74,16 @@ OVERRIDE_USAGE_MESSAGE = (
     "Uso: /override [siguiente] <día> <turno> <plato>, o "
     "/override [siguiente] <día> <turno> fuera [texto].\n"
     "El día puede ser lunes a viernes, 1 a 5, hoy o mañana. "
-    "Los turnos son desayuno, snack1, comida, snack2 y cena."
+    "Los turnos son desayuno, snack1, comida, snack2 y cena.\n"
+    "Sin argumentos, /override lo pregunta con botones."
 )
 OVERRIDE_DEFAULT_NOTE = "Fuera"
 OVERRIDE_KEYWORD = "fuera"
 OVERRIDE_CHANGE_BUTTON = "Cambiar una comida"
-OVERRIDE_OUT_BUTTON = "No cocinamos"
+OVERRIDE_CUSTOM_BUTTON = "✏️ Otro"
 OVERRIDE_DAY_PROMPT = "¿Qué día cambia?"
 OVERRIDE_SLOT_PROMPT = "¿Qué turno de {day} cambia?"
 OVERRIDE_DISH_PROMPT = "¿Qué vais a comer?"
-OVERRIDE_NO_DISHES_MESSAGE = (
-    "No hay platos de ese tipo en el catálogo. Añade uno con /newdish o elige No cocinamos."
-)
 OVERRIDE_WEEKEND_MESSAGE = "El fin de semana no está planificado, así que no hay nada que cambiar."
 SWAP_UNSATISFIABLE_MESSAGE = (
     "No hay ningún plato que encaje en ese turno sin romper las restricciones. "
@@ -281,9 +279,7 @@ PAGINATION_NEXT_BUTTON = "Siguiente >"
 MAIN_MENU_HEADER = "¿Qué quieres hacer?"
 CATALOGUE_MENU_HEADER = "Catálogo: elige qué consultar."
 SETTINGS_MENU_HINT = "Para cambiar un valor: /set <clave> <valor> en un chat privado."
-REGENERATE_CONFIRM_PROMPT = (
-    "Esto descarta el plan de esa semana y sortea otro desde cero. ¿Seguir?"
-)
+REGENERATE_CONFIRM_PROMPT = "Esto descarta el plan de esa semana y sortea otro desde cero. ¿Seguir?"
 
 BACK_BUTTON = "< Volver"
 PLAN_BUTTON = "Plan"
@@ -327,6 +323,16 @@ def render_relaxation_notice(step: int) -> str:
 
 def render_swap_unsatisfiable() -> str:
     return SWAP_UNSATISFIABLE_MESSAGE
+
+
+def render_override_custom_prompt(day: int, slot: Slot) -> str:
+    # In a group the bot may only see messages that reply to it, so the prompt
+    # asks for a reply there rather than a plain message.
+    return (
+        f"Escribe qué vais a comer el {DAY_LABELS[day].lower()} "
+        f"en el turno de {SLOT_LABELS[slot].lower()}. "
+        "En el grupo, escríbelo respondiendo a este mensaje."
+    )
 
 
 def render_override_kcal_notice(days: Sequence[int]) -> str:
@@ -422,9 +428,7 @@ COMMANDS: tuple[CommandInfo, ...] = (
         "Explora los platos activos o archivados",
         CommandGroup.CATALOGUE,
     ),
-    CommandInfo(
-        "dish", "/dish <nombre>", "Ficha completa de un plato", CommandGroup.CATALOGUE
-    ),
+    CommandInfo("dish", "/dish <nombre>", "Ficha completa de un plato", CommandGroup.CATALOGUE),
     CommandInfo(
         "foods",
         "/foods [archivados]",
@@ -437,23 +441,15 @@ COMMANDS: tuple[CommandInfo, ...] = (
         "Reactiva un plato o alimento archivado",
         CommandGroup.CATALOGUE,
     ),
-    CommandInfo(
-        "newdish", "/newdish", "Asistente para crear un plato", CommandGroup.CATALOGUE
-    ),
-    CommandInfo(
-        "editdish", "/editdish", "Asistente para editar un plato", CommandGroup.CATALOGUE
-    ),
+    CommandInfo("newdish", "/newdish", "Asistente para crear un plato", CommandGroup.CATALOGUE),
+    CommandInfo("editdish", "/editdish", "Asistente para editar un plato", CommandGroup.CATALOGUE),
     CommandInfo("deletedish", "/deletedish", "Archiva un plato", CommandGroup.CATALOGUE),
-    CommandInfo(
-        "newfood", "/newfood", "Asistente para crear un alimento", CommandGroup.CATALOGUE
-    ),
+    CommandInfo("newfood", "/newfood", "Asistente para crear un alimento", CommandGroup.CATALOGUE),
     CommandInfo(
         "editfood", "/editfood", "Asistente para editar un alimento", CommandGroup.CATALOGUE
     ),
     CommandInfo("deletefood", "/deletefood", "Archiva un alimento", CommandGroup.CATALOGUE),
-    CommandInfo(
-        "cancel", "/cancel", "Cancela el asistente en curso", CommandGroup.CATALOGUE
-    ),
+    CommandInfo("cancel", "/cancel", "Cancela el asistente en curso", CommandGroup.CATALOGUE),
     CommandInfo(
         "settings",
         "/settings",
@@ -493,9 +489,7 @@ INGREDIENT_PROMPT = (
     "Indica un ingrediente y su cantidad, por ejemplo: «pollo 200». "
     "Cuando termines, pulsa Terminar."
 )
-INGREDIENT_ADDED_PROMPT = (
-    "Añadido. Indica otro ingrediente, o pulsa Terminar si ya no faltan más."
-)
+INGREDIENT_ADDED_PROMPT = "Añadido. Indica otro ingrediente, o pulsa Terminar si ya no faltan más."
 INGREDIENT_FORMAT_ERROR_MESSAGE = (
     "No entendí eso. Escribe el nombre del alimento seguido de la cantidad, "
     "por ejemplo: «pollo 200»."

@@ -33,7 +33,7 @@ none
 6. If `/plan` or `/today` is used and no plan exists for the current week, then the bot shall say so and shall suggest `/regenerate`.
 7. The `/swap` command shall accept a day as `lunes` through `viernes` or as 1–5, a slot as `desayuno`, `snack1`, `comida`, `snack2`, or `cena`, and an optional trailing `siguiente`.
 7b. The `/plan`, `/shopping` and `/regenerate` commands shall each accept an optional `siguiente` argument, and shall address the current week when it is absent.
-7c. The `/override` command shall take `siguiente` as its first argument rather than its last, and shall accept `hoy` and `mañana` as days; see `../week-planner/overrides.md`.
+7c. The `/override` command shall take `siguiente` as its first argument rather than its last, shall accept `hoy` and `mañana` as days, and with no arguments shall ask with buttons instead; see `../week-planner/overrides.md`.
 8. If `/swap` is given arguments it cannot parse, then the bot shall reply with the accepted forms and shall change nothing.
 8b. If `/swap` names a slot the stored plan does not cover, then the bot shall say so, shall point at `/newdish` and `/regenerate`, and shall change nothing.
 9. When a command that changes the plan succeeds, the bot shall reply in the chat it was called from, and shall not broadcast to the group.
@@ -54,6 +54,7 @@ none
 | `/shopping [siguiente]` | both | allow-listed | That week's shopping list |
 | `/regenerate [siguiente]` | both | allow-listed | Re-draw that whole week |
 | `/swap <day> <slot> [siguiente]` | both | allow-listed | Re-draw one slot |
+| `/override` | both | allow-listed | Pin one slot by hand, asked with buttons |
 | `/override [siguiente] <day> <slot> <dish\|fuera>` | both | allow-listed | Pin one slot by hand |
 | `/dishes [archivados]` | both | allow-listed | Browse active or archived dishes |
 | `/dish <name>` | both | allow-listed | One dish card |

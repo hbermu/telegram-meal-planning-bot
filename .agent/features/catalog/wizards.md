@@ -15,7 +15,7 @@ none
 ## Requirements
 
 1. The wizards shall run only in a private chat, enforced by `../access-control/overview.md`.
-2. While a wizard is in progress, the bot shall treat plain text messages from that user as answers to the current step.
+2. While a wizard is in progress, the bot shall treat plain text messages from that user as answers to the current step, unless an `/override` custom-dish prompt started after the wizard is waiting in that chat; see `../week-planner/overrides.md`.
 3. The bot shall allow only one wizard per user at a time, and starting a second shall replace the first with a notice that the previous one was discarded.
 4. When a user sends `/cancel`, the bot shall discard the in-progress wizard and write nothing.
 5. The `/newdish` wizard shall ask, in order: name, meal type (inline buttons), then ingredients one at a time, then preparation steps, then whether to accept the computed calories or enter an override.

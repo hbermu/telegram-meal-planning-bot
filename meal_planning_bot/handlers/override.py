@@ -1,9 +1,11 @@
-"""Choosing by hand what a slot is: a dish from the catalogue, or a note for a
-slot nobody is cooking. The chosen slot is pinned, so re-drawing the week keeps
-it and draws the rest of the week around it."""
+"""Choosing by hand what a slot is: a dish from the catalogue, or a note typed
+for something the catalogue does not have. The chosen slot is pinned, so
+re-drawing the week keeps it and draws the rest of the week around it."""
 
+from collections.abc import MutableMapping
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import Protocol
 
 from meal_planning_bot import repo
 from meal_planning_bot.formatting import (
@@ -11,12 +13,11 @@ from meal_planning_bot.formatting import (
     DISH_FUZZY_PROMPT,
     DISH_NOT_FOUND_MESSAGE,
     NO_PLAN_MESSAGE,
+    OVERRIDE_CUSTOM_BUTTON,
     OVERRIDE_DAY_PROMPT,
     OVERRIDE_DEFAULT_NOTE,
     OVERRIDE_DISH_PROMPT,
     OVERRIDE_KEYWORD,
-    OVERRIDE_NO_DISHES_MESSAGE,
-    OVERRIDE_OUT_BUTTON,
     OVERRIDE_SLOT_PROMPT,
     OVERRIDE_USAGE_MESSAGE,
     OVERRIDE_WEEKEND_MESSAGE,
@@ -24,7 +25,9 @@ from meal_planning_bot.formatting import (
     PAGINATION_PREV_BUTTON,
     SLOT_LABELS,
     SLOT_NOT_PLANNED_MESSAGE,
+    TODAY_BUTTON,
     render_day,
+    render_override_custom_prompt,
     render_override_kcal_notice,
 )
 from meal_planning_bot.handlers import (
@@ -45,12 +48,29 @@ from meal_planning_bot.weeks import NEXT_KEYWORD, ArgumentError, current_week_st
 
 _TODAY_TOKEN = "hoy"
 _TOMORROW_TOKEN = "manana"
-# Enough dishes to choose from without a wall of buttons; the rest paginate.
-_DISHES_PER_PAGE = 8
+_DISH_COLUMNS = 2
+_DISH_ROWS = 6
+_DISHES_PER_PAGE = _DISH_COLUMNS * _DISH_ROWS
+_ACTIONS = ("slot", "pick", "set", "custom")
+# Where the slot waiting for a typed dish is kept. A wizard started after the
+# prompt clears it, so its answers never land in the plan by mistake.
+PENDING_NOTE_KEY = "override_note"
+
+
+class OverrideContextLike(ContextLike, Protocol):
+    user_data: MutableMapping[str, object]
 
 
 class WeekendError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class PendingNote:
+    chat_id: int
+    is_next: bool
+    day: int
+    slot: Slot
 
 
 @dataclass(frozen=True)
@@ -123,8 +143,16 @@ async def _apply(
     )
 
 
-async def cmd_override(update: UpdateLike, context: ContextLike) -> None:
+async def cmd_override(update: UpdateLike, context: OverrideContextLike) -> None:
     today = get_clock(context)()
+    if not context.args:
+        context.user_data.pop(PENDING_NOTE_KEY, None)
+        if _stored_plan(context, False) is None:
+            await update.reply_text(NO_PLAN_MESSAGE)
+            return
+        await update.reply_text(OVERRIDE_DAY_PROMPT, reply_markup=_day_keyboard(False, today))
+        return
+
     try:
         choice = parse_override_args(list(context.args), today)
     except WeekendError:
@@ -181,12 +209,14 @@ async def cmd_override(update: UpdateLike, context: ContextLike) -> None:
     await update.reply_text(DISH_FUZZY_PROMPT, reply_markup=(row,))
 
 
-def _day_keyboard(is_next: bool) -> Keyboard:
+def _day_keyboard(is_next: bool, today: date) -> Keyboard:
     week = keyboards.week_token(is_next)
     rows = [
         tuple((DAY_LABELS[day], f"ov:slot:{week}:{day}") for day in days)
         for days in ((0, 1, 2), (3, 4))
     ]
+    if not is_next and today.weekday() < 5:
+        rows.insert(0, ((TODAY_BUTTON, f"ov:slot:{week}:{today.weekday()}"),))
     return (*rows, keyboards.back_row(f"menu:plan:{week}"))
 
 
@@ -204,52 +234,62 @@ def _slot_keyboard(is_next: bool, day: int, covered: set[Slot]) -> Keyboard:
 def _pick_keyboard(
     is_next: bool, day: int, slot: Slot, page: int, dishes: list[tuple[int, str]]
 ) -> Keyboard:
-    week = keyboards.week_token(is_next)
+    target = f"{keyboards.week_token(is_next)}:{day}:{slot.value}"
+    buttons = [
+        (OVERRIDE_CUSTOM_BUTTON, f"ov:custom:{target}"),
+        *((name, f"ov:set:{target}:{dish_id}") for dish_id, name in dishes),
+    ]
+    last_page = (len(buttons) - 1) // _DISHES_PER_PAGE + 1
+    # A button from before the catalogue shrank can point past the last page.
+    page = min(page, last_page)
     start = (page - 1) * _DISHES_PER_PAGE
+    shown = buttons[start : start + _DISHES_PER_PAGE]
     rows: list[ButtonRow] = [
-        ((name, f"ov:set:{week}:{day}:{slot.value}:{dish_id}"),)
-        for dish_id, name in dishes[start : start + _DISHES_PER_PAGE]
+        tuple(shown[i : i + _DISH_COLUMNS]) for i in range(0, len(shown), _DISH_COLUMNS)
     ]
     paging: list[tuple[str, str]] = []
     if page > 1:
-        paging.append((PAGINATION_PREV_BUTTON, f"ov:pick:{week}:{day}:{slot.value}:{page - 1}"))
-    if start + _DISHES_PER_PAGE < len(dishes):
-        paging.append((PAGINATION_NEXT_BUTTON, f"ov:pick:{week}:{day}:{slot.value}:{page + 1}"))
+        paging.append((PAGINATION_PREV_BUTTON, f"ov:pick:{target}:{page - 1}"))
+    if page < last_page:
+        paging.append((PAGINATION_NEXT_BUTTON, f"ov:pick:{target}:{page + 1}"))
     if paging:
         rows.append(tuple(paging))
-    rows.append(((OVERRIDE_OUT_BUTTON, f"ov:out:{week}:{day}:{slot.value}"),))
-    rows.append(keyboards.back_row(f"ov:slot:{week}:{day}"))
+    rows.append(keyboards.back_row(f"ov:slot:{keyboards.week_token(is_next)}:{day}"))
     return tuple(rows)
 
 
-async def on_override_callback(update: CallbackUpdateLike, context: ContextLike) -> None:
+async def on_override_callback(update: CallbackUpdateLike, context: OverrideContextLike) -> None:
     query = update.callback_query
     if query is None or query.data is None:
         return
     await query.answer()
+    # Any tap moves on from a custom-dish prompt, the back button included.
+    context.user_data.pop(PENDING_NOTE_KEY, None)
 
     parts = query.data.split(":")
     action = parts[1] if len(parts) > 1 else ""
     is_next = len(parts) > 2 and parts[2] == keyboards.NEXT
+    today = get_clock(context)()
 
     plan = _stored_plan(context, is_next)
     if plan is None:
         await update.reply_text(NO_PLAN_MESSAGE, reply_markup=_back_to_plan(is_next))
         return
 
-    if action == "day":
-        await update.reply_text(OVERRIDE_DAY_PROMPT, reply_markup=_day_keyboard(is_next))
-        return
-
     try:
+        if action not in _ACTIONS:
+            raise ValueError(action)
         day = int(parts[3])
+        if not 0 <= day < len(DAY_LABELS):
+            raise ValueError(day)
         slot = Slot(parts[4]) if action != "slot" else None
-        page = int(parts[5]) if action == "pick" else 1
+        page = max(int(parts[5]), 1) if action == "pick" else 1
         dish_id = int(parts[5]) if action == "set" else None
     except (IndexError, ValueError):
-        # A button from a retired keyboard: start the choice again rather than
-        # going quiet. See `../command-surface/navigation.md`.
-        await update.reply_text(OVERRIDE_DAY_PROMPT, reply_markup=_day_keyboard(is_next))
+        # The day prompt itself, or a button from a retired keyboard: start the
+        # choice again rather than going quiet. See
+        # `../command-surface/navigation.md`.
+        await update.reply_text(OVERRIDE_DAY_PROMPT, reply_markup=_day_keyboard(is_next, today))
         return
 
     covered = {entry.slot for entry in plan.entries}
@@ -272,17 +312,48 @@ async def on_override_callback(update: CallbackUpdateLike, context: ContextLike)
             for d in repo.list_dishes(get_conn(context), archived=False)
             if d.meal_type is meal_type
         ]
-        prompt = OVERRIDE_DISH_PROMPT if dishes else OVERRIDE_NO_DISHES_MESSAGE
         await update.reply_text(
-            prompt, reply_markup=_pick_keyboard(is_next, day, slot, page, dishes)
+            OVERRIDE_DISH_PROMPT, reply_markup=_pick_keyboard(is_next, day, slot, page, dishes)
         )
         return
 
-    if action == "out":
-        entry = PlanEntry(
-            day=day, slot=slot, dish_id=None, note=OVERRIDE_DEFAULT_NOTE, override=True
+    if action == "custom":
+        chat = update.effective_chat
+        assert chat is not None
+        context.user_data[PENDING_NOTE_KEY] = PendingNote(chat.id, is_next, day, slot)
+        await update.reply_text(
+            render_override_custom_prompt(day, slot),
+            reply_markup=keyboards.back_to(
+                f"ov:pick:{keyboards.week_token(is_next)}:{day}:{slot.value}:1"
+            ),
         )
-    else:
-        assert dish_id is not None
-        entry = PlanEntry(day=day, slot=slot, dish_id=dish_id, override=True)
+        return
+
+    assert dish_id is not None
+    entry = PlanEntry(day=day, slot=slot, dish_id=dish_id, override=True)
     await _apply(update, context, plan, entry, is_next)
+
+
+async def on_override_text(update: UpdateLike, context: OverrideContextLike, text: str) -> bool:
+    """Pin the dish typed after the custom-dish prompt. Answers whether the text
+    was that dish, so a message nobody asked for here can go to a wizard."""
+    pending = context.user_data.get(PENDING_NOTE_KEY)
+    chat = update.effective_chat
+    if not isinstance(pending, PendingNote) or chat is None or chat.id != pending.chat_id:
+        return False
+    del context.user_data[PENDING_NOTE_KEY]
+
+    plan = _stored_plan(context, pending.is_next)
+    if plan is None:
+        await update.reply_text(NO_PLAN_MESSAGE, reply_markup=_back_to_plan(pending.is_next))
+        return True
+    if pending.slot not in {entry.slot for entry in plan.entries}:
+        await update.reply_text(
+            SLOT_NOT_PLANNED_MESSAGE, reply_markup=_back_to_plan(pending.is_next)
+        )
+        return True
+    entry = PlanEntry(
+        day=pending.day, slot=pending.slot, dish_id=None, note=text.strip(), override=True
+    )
+    await _apply(update, context, plan, entry, pending.is_next)
+    return True

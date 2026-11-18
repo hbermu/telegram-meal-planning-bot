@@ -75,7 +75,7 @@ TELEGRAM_BOT_TOKEN=... MEALBOT_ALLOWED_USER_IDS=... MEALBOT_GROUP_CHAT_ID=... \
 
 **Consultation** — `/plan`, `/today`, `/shopping`, `/dishes`, `/dish <name>`, `/foods`
 
-**Plan** — `/regenerate`, `/swap <day> <slot>`, `/override <day> <slot> <dish|fuera>`
+**Plan** — `/regenerate`, `/swap <day> <slot>`, `/override` (asks with buttons, or takes `<day> <slot> <dish|fuera>`)
 
 **Catalogue (private chat only)** — `/newdish`, `/editdish`, `/deletedish`, `/newfood`, `/editfood`, `/deletefood`, `/cancel`
 
