@@ -541,12 +541,9 @@ def apply_overrides(plan: Plan, overrides: Sequence[PlanEntry]) -> Plan:
     The last resort when no relaxation step can hold them: an override is a
     decision, not a request, so it is never dropped for being inconvenient."""
     held = {(entry.day, entry.slot): entry for entry in overrides}
-    covered = {entry.slot for entry in plan.entries}
-    entries = tuple(
-        held.get((entry.day, entry.slot), entry)
-        for entry in plan.entries
-        if entry.slot in covered
-    )
+    # Substituting into the drawn entries is what keeps an override off a slot
+    # the plan does not cover: there is nothing there to substitute.
+    entries = tuple(held.get((entry.day, entry.slot), entry) for entry in plan.entries)
     return replace(plan, entries=entries)
 
 
