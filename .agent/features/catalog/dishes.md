@@ -21,14 +21,14 @@ none
 5. The repository shall reject a dish with no ingredients.
 6. When a dish is deactivated, the repository shall set `active = 0` and shall keep its ingredients and every plan entry referencing it.
 7. When a dish is deactivated and it appears in a stored plan for the current or the following week, the repository shall return the affected day-and-slot pairs.
-8. When the repository returns affected slots on deactivation, the bot shall re-draw each of them and shall report the replacements in its reply.
+8. When a dish is deactivated, a stored plan that holds it shall keep holding it until that week is re-drawn, and shall keep rendering it, because a plan is a record of a decision and the dish was still in the catalogue when it was drawn.
 9. The repository shall list archived dishes on request and shall reactivate one by setting `active = 1`.
 10. A dish's meal type shall be changeable, and changing it shall not alter stored plans.
 
 ## Tests covering this
 
 - `tests/test_repo.py` — duplicate names, duplicate ingredients, empty ingredient lists, deactivation preserving history and reporting affected slots, reactivation, meal-type change not touching stored plans
-- `tests/test_handlers.py` — deactivating a dish that is in the current plan re-draws its slots and names the replacements
+- `tests/test_handlers.py` — deactivating a dish that is in the current plan leaves the plan holding it
 
 ## Non-goals
 

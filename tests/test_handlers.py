@@ -1369,3 +1369,20 @@ def test_a_retired_override_button_restarts_the_choice(conn: sqlite3.Connection)
     _seed_plan(conn, OVERRIDE_WEEK)
     update = _override_tap(conn, "ov:set:now:basura")
     assert update.replies == [OVERRIDE_DAY_PROMPT]
+
+
+def test_a_plan_keeps_an_archived_dish_until_the_week_is_redrawn(
+    conn: sqlite3.Connection,
+) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    before = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert before is not None
+    drawn = next(e for e in before.entries if e.slot is Slot.DINNER)
+    assert drawn.dish_id is not None
+
+    repo.deactivate_dish(conn, drawn.dish_id, TUESDAY)
+
+    assert repo.get_plan(conn, OVERRIDE_WEEK) == before
+    update = _update()
+    _run(cmd_plan(update, _context(conn, TUESDAY)))
+    assert update.replies
