@@ -53,6 +53,7 @@ A week is addressed as `now` or `next` in the callback data, mirroring the optio
 
 - `tests/test_anchor.py` — the first reply is sent and the next ones edit it; the triggering message is deleted; a tap adopts its carrier but never displaces a held anchor; a failing deletion is not fatal; an unchanged render sends nothing; an uneditable anchor is replaced and taken off the screen; each chat navigates in its own message; posted content leaves the anchor in place
 - `tests/test_integration.py` — four commands in a row produce one sent message, three edits of it and four deletions; a tap after a forgotten anchor adopts the menu on screen; the shopping list posts without moving the anchor
+- `tests/test_bridge.py` — an edit that changes nothing maps to the success case, every other Telegram failure maps to one error type, and no `telegram` exception reaches a handler
 - `tests/test_handlers.py` — `/start` opens the main menu; every main-menu button answers something; the plan menu walks to next week and back; the regenerate button asks before drawing; the shopping button posts content instead of replacing the menu; an unknown `menu:` action opens the main menu
 
 ## Non-goals
