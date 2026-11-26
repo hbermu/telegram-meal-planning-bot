@@ -41,6 +41,8 @@ def allowed(config: Config) -> Callable[[Handler[U, P]], Handler[U, P]]:
                 return
             chat = update.effective_chat
             if chat is None or not (chat.id == config.group_chat_id or chat.type == "private"):
+                if chat is not None:
+                    logger.info("discarding update from chat %s (%s)", chat.id, chat.type)
                 return
             await handler(update, *args, **kwargs)
 

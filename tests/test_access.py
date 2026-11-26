@@ -60,14 +60,19 @@ def test_disallowed_user_gets_no_reply_and_is_logged(caplog: pytest.LogCaptureFi
     assert "999" in caplog.text
 
 
-def test_allowed_user_in_unknown_chat_gets_no_reply() -> None:
+def test_allowed_user_in_unknown_chat_gets_no_reply_and_is_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     update = FakeUpdate(
         effective_user=SimpleNamespace(id=1),
         effective_chat=FakeChat(id=-555, type="group"),
     )
     wrapped = allowed(CONFIG)(_handler)
-    _run(wrapped(update))
+    with caplog.at_level(logging.INFO):
+        _run(wrapped(update))
     assert update.replies == []
+    assert "-555" in caplog.text
+    assert str(CONFIG.group_chat_id) not in caplog.text
 
 
 def test_allowed_user_in_group_chat_runs_the_handler() -> None:
