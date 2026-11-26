@@ -56,6 +56,15 @@ _JOB_FOR_SETTING: dict[str, str] = {
     "daily_post_time": "daily",
 }
 
+_WEEKDAYS = (0, 1, 2, 3, 4)
+
+
+def job_day(weekday: int) -> int:
+    """A `date.weekday()` (0 Monday) in the job queue's own numbering, which
+    counts from Sunday. Passing the Python number straight through shifts every
+    scheduled post one day earlier and makes the daily job fire on a weekend."""
+    return (weekday + 1) % 7
+
 
 def parse_local_time(raw: str, tz: ZoneInfo) -> time:
     hour, minute = (int(p) for p in raw.split(":"))
@@ -154,7 +163,7 @@ def _register_weekly(job_queue: JobQueueLike, conn: Connection, config: Config) 
         today = datetime.now(tz).date()
         await weekly_job(context.bot, conn, config, today, Random())
 
-    job_queue.run_daily(_job, post_time, days=(weekday,), name="weekly")
+    job_queue.run_daily(_job, post_time, days=(job_day(weekday),), name="weekly")
 
 
 def _register_daily(job_queue: JobQueueLike, conn: Connection, config: Config) -> None:
@@ -165,7 +174,9 @@ def _register_daily(job_queue: JobQueueLike, conn: Connection, config: Config) -
         today = datetime.now(tz).date()
         await daily_job(context.bot, conn, config, today, Random())
 
-    job_queue.run_daily(_job, post_time, days=(0, 1, 2, 3, 4), name="daily")
+    job_queue.run_daily(
+        _job, post_time, days=tuple(job_day(day) for day in _WEEKDAYS), name="daily"
+    )
 
 
 def register_jobs(job_queue: JobQueueLike, conn: Connection, config: Config) -> None:

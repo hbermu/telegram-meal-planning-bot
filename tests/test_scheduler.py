@@ -150,8 +150,10 @@ def test_register_jobs_names_and_days(conn: sqlite3.Connection) -> None:
     weekly = next(e for e in job_queue.registered if e[3] == "weekly")
     daily = next(e for e in job_queue.registered if e[3] == "daily")
 
-    assert weekly[2] == (4,)  # default weekly_post_weekday is Friday
-    assert daily[2] == (0, 1, 2, 3, 4)
+    # The job queue counts days from Sunday, so the default Friday is 5 and
+    # Monday to Friday is 1 to 5.
+    assert weekly[2] == (5,)
+    assert daily[2] == (1, 2, 3, 4, 5)
     assert weekly[1].tzinfo is not None
     assert daily[1].tzinfo is not None
 
@@ -161,7 +163,11 @@ def test_register_jobs_honours_a_changed_weekday(conn: sqlite3.Connection) -> No
     job_queue = FakeJobQueue()
     scheduler.register_jobs(job_queue, conn, CONFIG)
     weekly = next(e for e in job_queue.registered if e[3] == "weekly")
-    assert weekly[2] == (1,)
+    assert weekly[2] == (2,)
+
+
+def test_job_day_counts_from_sunday() -> None:
+    assert [scheduler.job_day(weekday) for weekday in range(7)] == [1, 2, 3, 4, 5, 6, 0]
 
 
 # --- reschedule --------------------------------------------------------------

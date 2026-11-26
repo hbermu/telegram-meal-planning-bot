@@ -21,6 +21,7 @@
 ## Requirements
 
 1. The scheduler shall build every job time as a timezone-aware time in `MEALBOT_TIMEZONE`.
+1b. The scheduler shall translate every weekday it registers from the Python numbering the settings and the planner use, where Monday is 0, into the job queue's own, where Sunday is 0. Passing the Python number through shifts every scheduled post one day earlier.
 2. The scheduler shall run the weekly job on `weekly_post_weekday` at `weekly_post_time`.
 3. When the weekly job runs, the bot shall generate the plan for the **following** Monday's week if none exists, and shall post that plan followed by its shopping list to the group chat.
 4. The weekly job shall label its post as next week's plan and shall name the Monday it starts on, so a post read on Friday cannot be mistaken for the current week.
@@ -42,7 +43,7 @@
 
 ## Tests covering this
 
-- `tests/test_scheduler.py` — an empty catalogue leaves the startup catch-up returning no plans instead of raising, and makes the weekly and daily jobs post the diagnosis to the group; job times are timezone-aware and land on the configured local time across a DST boundary; the weekly job is registered for `weekly_post_weekday` only; the daily job is registered for days 0–4 only; the weekly job targets next week's Monday; the daily job targets today's row of the current week; the startup catch-up generates the current week on a Wednesday with no plan and next week on a Saturday, and does nothing when both exist; changing a time or the weekday re-registers only that job
+- `tests/test_scheduler.py` — an empty catalogue leaves the startup catch-up returning no plans instead of raising, and makes the weekly and daily jobs post the diagnosis to the group; job times are timezone-aware and land on the configured local time across a DST boundary; the weekly job is registered for `weekly_post_weekday` only and the daily job for Monday to Friday only, both in the job queue's Sunday-first numbering, which every Python weekday is converted into; the weekly job targets next week's Monday; the daily job targets today's row of the current week; the startup catch-up generates the current week on a Wednesday with no plan and next week on a Saturday, and does nothing when both exist; changing a time or the weekday re-registers only that job
 - `tests/test_integration.py` — the weekly and daily jobs post to the group chat and to no other chat
 - `tests/test_scheduler.py` — with partial plans allowed, a lunch-only catalogue makes the weekly job post a plan and its shopping list instead of a diagnosis, and the startup catch-up draws a partial week
 
