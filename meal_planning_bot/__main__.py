@@ -15,6 +15,7 @@ from telegram.ext import (
 )
 from telegram.ext import (
     ApplicationBuilder,
+    CallbackContext,
     CallbackQueryHandler,
     CommandHandler,
     ExtBot,
@@ -73,6 +74,9 @@ from meal_planning_bot.weeks import current_week_start, next_week_start
 # own default shape here (plain dicts for bot_data/user_data/chat_data); this
 # alias just keeps the six-way generic out of every signature below.
 Application = PTBApplication[Any, Any, Any, Any, Any, Any]
+Context = CallbackContext[Any, Any, Any, Any]
+
+logger = logging.getLogger(__name__)
 
 _CATALOG_CALLBACK_PATTERN = r"^(dishes|foods|dish|restore):"
 _MENU_CALLBACK_PATTERN = r"^menu:"
@@ -152,6 +156,10 @@ def _register_handlers(app: Application, config: Config) -> None:
     )
 
 
+async def _log_error(update: object, context: Context) -> None:
+    logger.error("update %s raised an exception", update, exc_info=context.error)
+
+
 async def _post_my_commands(app: Application) -> None:
     await app.bot.set_my_commands(
         [BotCommand(command.name, command.description) for command in COMMANDS]
@@ -169,7 +177,13 @@ def build_application(
         builder = ApplicationBuilder().bot(bot)
     else:
         builder = ApplicationBuilder().token(config.token)
-    app: Application = builder.post_init(_post_my_commands).build()
+    # Updates are answered concurrently so that one that never finishes -- a
+    # Telegram call that hangs, a handler that waits on something that never
+    # comes -- cannot hold back every other update behind it. Sequentially,
+    # that leaves the bot polling and silent, with the scheduled posts still
+    # going out, and nothing in the log to say so.
+    app: Application = builder.concurrent_updates(True).post_init(_post_my_commands).build()
+    app.add_error_handler(_log_error)
 
     app.bot_data["conn"] = conn
     app.bot_data["clock"] = clock
@@ -199,6 +213,36 @@ async def _post_catch_up(app: Application, conn: Connection, config: Config, tod
 _MUZZLED_LOGGERS = ("httpx", "httpcore", "apscheduler")
 
 
+_STALL_CHECK_SECONDS = 60.0
+
+
+def _register_stall_watchdog(app: Application) -> None:
+    """Exit when updates stop being drained from the queue.
+
+    Concurrency alone does not cover every way the single draining task can
+    die, and the failure is invisible from outside: polling continues, the job
+    queue keeps posting, and no handler ever runs again. A queue that is still
+    not empty a minute later says it has happened, and only a new process
+    recovers -- `os._exit` because a clean shutdown would wait on whatever is
+    stuck."""
+    job_queue = app.job_queue
+    assert job_queue is not None
+    was_backed_up = False
+
+    async def _check(_: Context) -> None:
+        nonlocal was_backed_up
+        if app.update_queue.empty():
+            was_backed_up = False
+            return
+        if not was_backed_up:
+            was_backed_up = True
+            return
+        logger.error("updates are no longer being processed, exiting")
+        os._exit(1)
+
+    job_queue.run_repeating(_check, interval=_STALL_CHECK_SECONDS, name="stall-watchdog")
+
+
 def _configure_logging(config: Config) -> None:
     logging.basicConfig(level=config.log_level)
     for name in _MUZZLED_LOGGERS:
@@ -226,6 +270,7 @@ def main() -> None:
 
     app.post_init = _post_init
     scheduler.register_jobs(_job_queue(app), conn, config)
+    _register_stall_watchdog(app)
 
     app.run_polling()
 

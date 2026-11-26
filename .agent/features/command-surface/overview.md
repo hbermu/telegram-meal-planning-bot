@@ -4,7 +4,7 @@
 
 ## Source files
 
-- `meal_planning_bot/__main__.py` — handler registration and the `setMyCommands` call
+- `meal_planning_bot/__main__.py` — handler registration, the `setMyCommands` call, the error handler and the stall watchdog
 - `meal_planning_bot/handlers/help.py` — `/start`, `/help`
 - `meal_planning_bot/handlers/menu.py` — the menu tree every command is also reachable through; see `navigation.md`
 - `meal_planning_bot/handlers/menu.py` — the menu tree every command is also reachable through
@@ -41,6 +41,9 @@ none
 10. The bot shall reply to an unknown command with the `/help` text.
 11. Every reply shall be Spanish.
 12. The application shall be constructed with an injectable bot and clock, so it can be assembled in a test against a fake transport and a fixed date instead of a live network connection and the real one.
+13. The bot shall answer updates concurrently, so that one update that never finishes cannot hold back every update behind it. Answered one at a time, a single handler that blocks leaves the bot polling and silent while the scheduled posts still go out, and nothing says so.
+14. The bot shall register an error handler that logs the failing update with its exception.
+15. If updates stop being taken off the queue, then the bot shall log it and end the process, because nothing short of a new process answers again.
 
 ## Commands
 
@@ -74,7 +77,7 @@ none
 
 - `tests/test_handlers.py` — `/today` on a weekend, `/plan` with no plan, `/swap` argument parsing in both Spanish words and numbers, `/swap` on a slot the plan does not cover, unknown commands falling back to help
 - `tests/test_formatting.py` — the plan message shows per-day totals and the help text lists every registered command
-- `tests/test_integration.py` — the assembled application against a fake transport and real `telegram.Update` objects, including that `build_application` accepts an injected bot and clock
+- `tests/test_integration.py` — the assembled application against a fake transport and real `telegram.Update` objects, including that `build_application` accepts an injected bot and clock, answers updates concurrently, and carries an error handler
 
 ## Non-goals
 

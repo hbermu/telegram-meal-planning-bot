@@ -457,3 +457,17 @@ async def test_regenerate_on_empty_catalogue_diagnoses_and_saves_nothing(tmp_pat
     assert repo.get_plan(conn, current_week_start(TODAY)) is None
 
     await app.shutdown()
+
+
+async def test_an_update_cannot_block_the_ones_behind_it(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    conn = open_database(config.db_path)
+    app = build_application(config, conn, bot=FakeBot(), clock=lambda: TODAY)
+
+    # A handler that never returns would otherwise hold the single processing
+    # task forever: the bot keeps polling, the scheduled posts keep going out,
+    # and no command is ever answered again.
+    assert app.concurrent_updates > 0
+    # Without a handler registered, PTB logs "No error handlers are registered"
+    # and the update that failed is never reported with its own context.
+    assert app.error_handlers
