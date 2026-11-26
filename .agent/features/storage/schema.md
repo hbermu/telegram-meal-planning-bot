@@ -23,21 +23,23 @@ none
 8. The `dishes.kcal_override` column shall be nullable and shall accept only values greater than zero when present, enforced by a `CHECK` constraint. A dish without an override takes its calories from its ingredients, as defined in `../catalog/nutrition.md`.
 9. The `dish_ingredients` table shall carry `dish_id INTEGER NOT NULL REFERENCES dishes(id)`, `food_id INTEGER NOT NULL REFERENCES foods(id)`, `quantity REAL NOT NULL CHECK (quantity > 0)`, with `PRIMARY KEY (dish_id, food_id)` so a food appears at most once per dish.
 10. The `plans` table shall carry `id INTEGER PRIMARY KEY`, `week_start TEXT NOT NULL UNIQUE`, `generated_at TEXT NOT NULL`, `relaxation INTEGER NOT NULL DEFAULT 0`.
-11. The `plan_entries` table shall carry `plan_id INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE`, `day INTEGER NOT NULL CHECK (day BETWEEN 0 AND 4)`, `slot TEXT NOT NULL`, `dish_id INTEGER REFERENCES dishes(id)`, `note TEXT`, `override INTEGER NOT NULL DEFAULT 0`, with `PRIMARY KEY (plan_id, day, slot)`.
+11. The `plan_entries` table shall carry `plan_id INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE`, `day INTEGER NOT NULL CHECK (day BETWEEN 0 AND 4)`, `slot TEXT NOT NULL`, `dish_id INTEGER REFERENCES dishes(id)`, `note TEXT`, `kcal INTEGER`, `override INTEGER NOT NULL DEFAULT 0`, with `PRIMARY KEY (plan_id, day, slot)`.
 11b. The `plan_entries` table shall enforce that exactly one of `dish_id` and `note` is set, and that a `note` only exists where `override` is 1; a note is a slot nobody is cooking and only ever gets there by hand. See `../week-planner/overrides.md`.
 11c. The `plan_entries.override` column shall accept only 0 or 1, enforced by a `CHECK` constraint.
+11d. The `plan_entries.kcal` column shall hold calories only where there is a `note` to hold them for, and shall be greater than zero where it is set, both enforced by `CHECK` constraints. A dish's calories are resolved from the catalogue, so only a note can carry a number of its own. See `../week-planner/overrides.md`.
 12. The `plan_entries.slot` column shall accept only `breakfast`, `snack1`, `lunch`, `snack2`, or `dinner`, enforced by a `CHECK` constraint.
 12b. Migration 2 shall rebuild `plan_entries` to add those columns, carrying every existing row over as a drawn entry, because SQLite cannot relax a `NOT NULL`.
+12c. Migration 3 shall rebuild `plan_entries` to add `kcal`, carrying every existing note over without calories, because `ALTER TABLE` cannot add a table-level `CHECK`.
 13. The `settings` table shall carry `key TEXT PRIMARY KEY` and `value TEXT NOT NULL`, and shall be seeded by migration 1 with every key listed in `../command-surface/settings.md`.
 14. When a dish is deactivated, the schema shall keep its `dish_ingredients` rows and every `plan_entries` row that references it.
 
 ## Tests covering this
 
-- `tests/test_migrations.py` — every `CHECK` constraint rejects an out-of-range value; the `lower(name)` unique indexes reject a case-variant duplicate; the `settings` seed contains exactly the documented keys; migration 2 keeps existing plan entries and rejects an entry with both a dish and a note, with neither, or with a note it was not given by hand
+- `tests/test_migrations.py` — every `CHECK` constraint rejects an out-of-range value; the `lower(name)` unique indexes reject a case-variant duplicate; the `settings` seed contains exactly the documented keys; migration 2 keeps existing plan entries and rejects an entry with both a dish and a note, with neither, or with a note it was not given by hand; migration 3 leaves an existing note without calories, and calories are rejected on a drawn entry and at zero
 - `tests/test_repo.py` — a plan's entries disappear when the plan is deleted, and a deactivated dish keeps its ingredient rows
 
 ## Non-goals
 
 - Per-user or per-profile scoping. There is one household and one plan per week.
-- Snapshotting a dish's calories onto a plan entry. A plan stores dish identifiers and the occasional note; calories are resolved when the plan is read.
+- Snapshotting a dish's calories onto a plan entry. A plan stores dish identifiers and the occasional note; a dish's calories are resolved when the plan is read, and only a note, which nothing can resolve, stores a number.
 - Historical shopping lists. A list is derived from a plan on demand, never stored.

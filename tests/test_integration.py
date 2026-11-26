@@ -333,12 +333,20 @@ async def test_a_custom_dish_is_typed_into_the_button_flow(tmp_path: Path) -> No
 
     anchor = user.anchor_id
     bot.deleted.clear()
-    chosen = await user.send("Pizza casera")
+    asked = await user.send("Pizza casera")
+    assert "Pizza casera" in asked, "the dish is read back while its calories are asked for"
+    chosen = await user.send("900")
 
-    assert "Cena: Pizza casera" in chosen
+    assert "Cena: Pizza casera (900 kcal)" in chosen
     assert OVERRIDE_MARK in chosen
+    # The day it was pinned on charges for it like any other meal.
+    total = next(line for line in chosen.splitlines() if line.strip().startswith("Total:"))
+    assert int(total.split()[1]) >= 900
     assert user.anchor_id == anchor, "the pinned day must replace the prompt in place"
-    assert bot.deleted == [(GROUP_CHAT, user._message_id)], "the typed dish must leave the chat"
+    assert bot.deleted == [
+        (GROUP_CHAT, user._message_id - 1),
+        (GROUP_CHAT, user._message_id),
+    ], "both the typed dish and its calories must leave the chat"
 
     # The prompt is answered: the next message is chatter, not another dish.
     bot.messages.clear()

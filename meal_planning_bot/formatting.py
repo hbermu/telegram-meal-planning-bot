@@ -81,6 +81,10 @@ OVERRIDE_DEFAULT_NOTE = "Fuera"
 OVERRIDE_KEYWORD = "fuera"
 OVERRIDE_CHANGE_BUTTON = "Cambiar una comida"
 OVERRIDE_CUSTOM_BUTTON = "✏️ Otro"
+OVERRIDE_KCAL_UNKNOWN_BUTTON = "Sin calorías"
+OVERRIDE_KCAL_INVALID_MESSAGE = (
+    "Escribe las calorías como un número entero mayor que cero, o toca el botón si no las sabes."
+)
 OVERRIDE_DAY_PROMPT = "¿Qué día cambia?"
 OVERRIDE_SLOT_PROMPT = "¿Qué turno de {day} cambia?"
 OVERRIDE_DISH_PROMPT = "¿Qué vais a comer?"
@@ -115,7 +119,11 @@ def _day_block(
         mark = f" {OVERRIDE_MARK}" if entry.override else ""
         if entry.dish_id is None:
             assert entry.note is not None
-            lines.append(f"  {SLOT_LABELS[slot]}: {entry.note}{mark}")
+            if entry.kcal is None:
+                lines.append(f"  {SLOT_LABELS[slot]}: {entry.note}{mark}")
+                continue
+            lines.append(f"  {SLOT_LABELS[slot]}: {entry.note} ({entry.kcal} kcal){mark}")
+            total += entry.kcal
             continue
         dish = dishes[entry.dish_id]
         lines.append(f"  {SLOT_LABELS[slot]}: {dish.name} ({dish.kcal} kcal){mark}")
@@ -323,6 +331,15 @@ def render_relaxation_notice(step: int) -> str:
 
 def render_swap_unsatisfiable() -> str:
     return SWAP_UNSATISFIABLE_MESSAGE
+
+
+def render_override_kcal_prompt(note: str) -> str:
+    # Same reply-in-a-group note as the prompt above, for the same reason.
+    return (
+        f"¿Cuántas calorías tiene {note}? Escribe el número, "
+        "o toca el botón si no las sabes. "
+        "En el grupo, escríbelo respondiendo a este mensaje."
+    )
 
 
 def render_override_custom_prompt(day: int, slot: Slot) -> str:

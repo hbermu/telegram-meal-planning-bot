@@ -270,6 +270,21 @@ def test_a_hand_picked_slot_is_marked_and_a_note_carries_no_calories() -> None:
     assert f"Total: {sum(kcal)} kcal" in monday
 
 
+def test_a_note_with_calories_shows_them_and_counts_in_the_day() -> None:
+    plan, dishes = _full_week_plan()
+    entries = [
+        replace(entry, dish_id=None, note="Pizza casera", kcal=900, override=True)
+        if entry.day == 0 and entry.slot is Slot.DINNER
+        else entry
+        for entry in plan.entries
+    ]
+    monday = render_day(replace(plan, entries=tuple(entries)), dishes, day=0)
+
+    assert f"Cena: Pizza casera (900 kcal) {OVERRIDE_MARK}" in monday
+    cooked = [dishes[e.dish_id].kcal for e in entries if e.day == 0 and e.dish_id is not None]
+    assert f"Total: {sum(cooked) + 900} kcal" in monday
+
+
 def test_the_kcal_notice_names_the_days_it_was_given() -> None:
     assert render_override_kcal_notice([]) == ""
     one = render_override_kcal_notice([0])

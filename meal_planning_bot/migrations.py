@@ -111,7 +111,40 @@ def _add_plan_entry_overrides(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+_PLAN_ENTRY_NOTE_KCAL: tuple[str, ...] = (
+    """
+CREATE TABLE plan_entries_new (
+    plan_id INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+    day INTEGER NOT NULL CHECK (day BETWEEN 0 AND 4),
+    slot TEXT NOT NULL CHECK (slot IN ('breakfast', 'snack1', 'lunch', 'snack2', 'dinner')),
+    dish_id INTEGER REFERENCES dishes(id),
+    note TEXT,
+    kcal INTEGER CHECK (kcal IS NULL OR kcal > 0),
+    override INTEGER NOT NULL DEFAULT 0 CHECK (override IN (0, 1)),
+    CHECK ((dish_id IS NOT NULL) <> (note IS NOT NULL)),
+    CHECK (note IS NULL OR override = 1),
+    CHECK (kcal IS NULL OR note IS NOT NULL),
+    PRIMARY KEY (plan_id, day, slot)
+)
+""",
+    "INSERT INTO plan_entries_new (plan_id, day, slot, dish_id, note, override) "
+    "SELECT plan_id, day, slot, dish_id, note, override FROM plan_entries",
+    "DROP TABLE plan_entries",
+    "ALTER TABLE plan_entries_new RENAME TO plan_entries",
+)
+
+
+def _add_plan_entry_note_kcal(conn: sqlite3.Connection) -> None:
+    # Rebuilt rather than altered for the same reason as migration 2: the
+    # invariant that only a note may carry calories is a table-level CHECK,
+    # which ALTER TABLE cannot add. Existing notes keep no calories, which is
+    # what they were worth before anybody could say otherwise.
+    for statement in _PLAN_ENTRY_NOTE_KCAL:
+        conn.execute(statement)
+
+
 MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (
     _create_schema,
     _add_plan_entry_overrides,
+    _add_plan_entry_note_kcal,
 )

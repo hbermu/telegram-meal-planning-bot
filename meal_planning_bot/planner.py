@@ -107,8 +107,11 @@ class Pinned:
 
     @property
     def kcal(self) -> int:
-        # A slot nobody is cooking feeds the day nothing the planner can count.
-        return self.dish.kcal if self.dish is not None else 0
+        # A slot nobody is cooking feeds the day whatever somebody typed for it,
+        # and nothing the planner can count when nobody knew.
+        if self.dish is not None:
+            return self.dish.kcal
+        return self.entry.kcal or 0
 
 
 def pin(overrides: Sequence[PlanEntry], catalogue: Sequence[Dish]) -> dict[Position, Pinned]:
@@ -372,7 +375,11 @@ def _floor(low: int, slots: Collection[Slot]) -> int:
 def _day_floors(low: int, fixed: Mapping[Position, Pinned]) -> dict[int, int]:
     # A day with a slot nobody is cooking cannot reach the target either, for
     # the same reason a partial plan cannot: the floor goes, the ceiling stays.
-    uncooked = {day for (day, _slot), held in fixed.items() if held.dish is None}
+    # A note somebody put calories on is not that case: the day is accounted
+    # for, so it keeps its floor like any other.
+    uncooked = {
+        day for (day, _slot), held in fixed.items() if held.dish is None and held.entry.kcal is None
+    }
     return {day: 0 if day in uncooked else low for day in range(5)}
 
 
@@ -574,11 +581,13 @@ def days_outside_window(
         today = [e for e in plan.entries if e.day == day]
         if not today:
             continue
-        floor = 0 if any(e.dish_id is None for e in today) else low
+        # A note nobody put calories on takes the floor away with it, exactly
+        # as it does for the draw; one that carries them counts like a dish.
+        floor = 0 if any(e.dish_id is None and e.kcal is None for e in today) else low
         total = sum(
-            dishes[e.dish_id].kcal
+            dishes[e.dish_id].kcal if e.dish_id is not None else (e.kcal or 0)
             for e in today
-            if e.dish_id is not None and e.dish_id in dishes
+            if e.dish_id is None or e.dish_id in dishes
         )
         if not (floor <= total <= high):
             outside.append(day)

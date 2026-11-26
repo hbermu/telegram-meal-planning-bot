@@ -129,6 +129,53 @@ def test_a_plan_entry_carries_either_a_dish_or_a_note(conn: sqlite3.Connection) 
         )
 
 
+def test_migration_three_leaves_existing_notes_without_calories(tmp_path: Path) -> None:
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.row_factory = sqlite3.Row
+    apply_pragmas(old)
+    with old:
+        MIGRATIONS[0](old)
+        MIGRATIONS[1](old)
+        old.execute("PRAGMA user_version = 2")
+        plan_id = _plan_id(old)
+        old.execute(
+            "INSERT INTO plan_entries (plan_id, day, slot, note, override) "
+            "VALUES (?, 0, 'lunch', 'Fuera', 1)",
+            (plan_id,),
+        )
+    old.close()
+
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    apply_pragmas(conn)
+    migrate(conn)
+
+    row = conn.execute("SELECT * FROM plan_entries").fetchone()
+    assert row["note"] == "Fuera"
+    assert row["override"] == 1
+    assert row["kcal"] is None
+    conn.close()
+
+
+def test_only_a_note_may_carry_calories(conn: sqlite3.Connection) -> None:
+    plan_id = _plan_id(conn)
+    dish_id = _a_dish(conn)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO plan_entries (plan_id, day, slot, dish_id, kcal) "
+            "VALUES (?, 0, 'lunch', ?, 500)",
+            (plan_id, dish_id),
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO plan_entries (plan_id, day, slot, note, kcal, override) "
+            "VALUES (?, 1, 'lunch', 'Fuera', 0, 1)",
+            (plan_id,),
+        )
+
+
 def test_a_note_only_exists_on_a_hand_picked_entry(conn: sqlite3.Connection) -> None:
     plan_id = _plan_id(conn)
 

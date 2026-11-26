@@ -23,6 +23,7 @@ from meal_planning_bot.formatting import (
     OVERRIDE_CUSTOM_BUTTON,
     OVERRIDE_DAY_PROMPT,
     OVERRIDE_DISH_PROMPT,
+    OVERRIDE_KCAL_INVALID_MESSAGE,
     PAGINATION_NEXT_BUTTON,
     PAGINATION_PREV_BUTTON,
     PARTIAL_PLAN_NOTICE,
@@ -36,6 +37,7 @@ from meal_planning_bot.formatting import (
     render_help,
     render_my_id,
     render_override_custom_prompt,
+    render_override_kcal_prompt,
     render_relaxation_notice,
     render_restored_dish,
     render_restored_food,
@@ -1459,15 +1461,74 @@ def test_the_custom_button_pins_the_dish_typed_next(conn: sqlite3.Connection) ->
 
     update = _update()
     _run(on_override_text(update, context, "  Paella de la abuela "))
+    assert "Paella de la abuela" in update.replies[0]
+    _run(on_override_text(update, context, "750"))
 
-    assert "Comida: Paella de la abuela" in update.replies[0]
+    assert "Comida: Paella de la abuela (750 kcal)" in update.replies[-1]
     stored = repo.get_plan(conn, OVERRIDE_WEEK)
     assert stored is not None
     entry = next(e for e in stored.entries if e.day == 2 and e.slot is Slot.LUNCH)
     assert entry == PlanEntry(
-        day=2, slot=Slot.LUNCH, dish_id=None, note="Paella de la abuela", override=True
+        day=2,
+        slot=Slot.LUNCH,
+        dish_id=None,
+        note="Paella de la abuela",
+        kcal=750,
+        override=True,
     )
     assert PENDING_NOTE_KEY not in context.user_data
+
+
+def test_the_typed_dish_is_asked_for_its_calories(conn: sqlite3.Connection) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    context = _custom_context(conn)
+
+    update = _update()
+    _run(on_override_text(update, context, "Paella de la abuela"))
+
+    assert update.replies == [render_override_kcal_prompt("Paella de la abuela")]
+    assert update.markups[0][0][0][1] == "ov:nokcal:now:2:lunch"
+    assert update.markups[0][-1] == back_to("ov:pick:now:2:lunch:1")[0]
+    # Nothing is stored until the calorie step answers.
+    stored = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert stored is not None
+    assert not any(e.note for e in stored.entries)
+
+
+def test_the_calorie_button_pins_the_dish_without_calories(conn: sqlite3.Connection) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    context = _custom_context(conn)
+    _run(on_override_text(_update(), context, "Paella de la abuela"))
+
+    update = _update(callback_query=FakeCallbackQuery(data="ov:nokcal:now:2:lunch"))
+    _run(on_override_callback(update, context))
+
+    assert "Comida: Paella de la abuela" in update.replies[-1]
+    assert "kcal)" not in update.replies[-1].split("Comida:")[1].split("\n")[0]
+    stored = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert stored is not None
+    entry = next(e for e in stored.entries if e.day == 2 and e.slot is Slot.LUNCH)
+    assert entry.note == "Paella de la abuela"
+    assert entry.kcal is None
+    assert PENDING_NOTE_KEY not in context.user_data
+
+
+@pytest.mark.parametrize("answer", ["mucha", "0", "-50", "3,5", ""])
+def test_a_calorie_answer_that_is_not_a_number_asks_again(
+    conn: sqlite3.Connection, answer: str
+) -> None:
+    _seed_plan(conn, OVERRIDE_WEEK)
+    context = _custom_context(conn)
+    _run(on_override_text(_update(), context, "Paella de la abuela"))
+
+    update = _update()
+    _run(on_override_text(update, context, answer))
+
+    assert update.replies == [OVERRIDE_KCAL_INVALID_MESSAGE]
+    assert PENDING_NOTE_KEY in context.user_data
+    stored = repo.get_plan(conn, OVERRIDE_WEEK)
+    assert stored is not None
+    assert not any(e.note for e in stored.entries)
 
 
 def test_the_custom_prompt_asks_for_the_dish_and_offers_a_way_back(

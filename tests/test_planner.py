@@ -601,6 +601,22 @@ def test_a_note_drops_that_days_calorie_floor_and_buys_nothing() -> None:
     assert total <= high
 
 
+def test_a_note_with_calories_charges_the_day_and_keeps_its_floor() -> None:
+    cat = catalogue(6, {t: 400 for t in MealType})
+    held = PlanEntry(
+        day=1, slot=Slot.LUNCH, dish_id=None, note="Pizza casera", kcal=400, override=True
+    )
+
+    plan = plan_week(cat, [], DEFAULT_SETTINGS, WEEK_START, Random(1), False, [held])
+
+    by_id = {d.id: d for d in cat}
+    tuesday = [e for e in plan.entries if e.day == 1]
+    assert held in tuesday
+    total = sum(by_id[e.dish_id].kcal for e in tuesday if e.dish_id is not None) + (held.kcal or 0)
+    low, high = day_window(DEFAULT_SETTINGS)
+    assert low <= total <= high, "a note somebody counted leaves the day accounted for"
+
+
 def test_a_pin_the_week_cannot_hold_is_laid_on_top_instead_of_refused() -> None:
     # One dinner of 2000 kcal: pinned at lunch it can never land in a window
     # built for a 400 kcal lunch, so no relaxation step can hold it.

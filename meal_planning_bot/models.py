@@ -106,6 +106,10 @@ class PlanEntry:
     # a note only ever exists on an entry someone chose by hand.
     dish_id: int | None
     note: str | None = None
+    # What a note is worth. A dish's calories are resolved from the catalogue,
+    # but nothing can resolve a note, so the number is the one somebody typed --
+    # and None where nobody knew it.
+    kcal: int | None = None
     override: bool = False
 
 

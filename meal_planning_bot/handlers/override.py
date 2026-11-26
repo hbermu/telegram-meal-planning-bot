@@ -3,7 +3,7 @@ for something the catalogue does not have. The chosen slot is pinned, so
 re-drawing the week keeps it and draws the rest of the week around it."""
 
 from collections.abc import MutableMapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from typing import Protocol
 
@@ -17,6 +17,8 @@ from meal_planning_bot.formatting import (
     OVERRIDE_DAY_PROMPT,
     OVERRIDE_DEFAULT_NOTE,
     OVERRIDE_DISH_PROMPT,
+    OVERRIDE_KCAL_INVALID_MESSAGE,
+    OVERRIDE_KCAL_UNKNOWN_BUTTON,
     OVERRIDE_KEYWORD,
     OVERRIDE_SLOT_PROMPT,
     OVERRIDE_USAGE_MESSAGE,
@@ -28,6 +30,7 @@ from meal_planning_bot.formatting import (
     render_day,
     render_override_custom_prompt,
     render_override_kcal_notice,
+    render_override_kcal_prompt,
 )
 from meal_planning_bot.handlers import (
     ButtonRow,
@@ -70,6 +73,9 @@ class PendingNote:
     is_next: bool
     day: int
     slot: Slot
+    # None while the dish itself is being waited for; set once it has been
+    # typed, which is when the prompt starts waiting for its calories instead.
+    note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -249,18 +255,51 @@ def _pick_keyboard(
     return tuple(rows)
 
 
+def _kcal_keyboard(pending: PendingNote) -> Keyboard:
+    target = f"{keyboards.week_token(pending.is_next)}:{pending.day}:{pending.slot.value}"
+    return (
+        ((OVERRIDE_KCAL_UNKNOWN_BUTTON, f"ov:nokcal:{target}"),),
+        keyboards.back_row(f"ov:pick:{target}:1"),
+    )
+
+
+async def _pin_note(
+    update: UpdateLike, context: OverrideContextLike, pending: PendingNote, kcal: int | None
+) -> None:
+    context.user_data.pop(PENDING_NOTE_KEY, None)
+    plan = _stored_plan(context, pending.is_next)
+    if plan is None:
+        await update.reply_text(NO_PLAN_MESSAGE, reply_markup=_back_to_plan(pending.is_next))
+        return
+    assert pending.note is not None
+    entry = PlanEntry(
+        day=pending.day,
+        slot=pending.slot,
+        dish_id=None,
+        note=pending.note,
+        kcal=kcal,
+        override=True,
+    )
+    await _apply(update, context, plan, entry, pending.is_next)
+
+
 async def on_override_callback(update: CallbackUpdateLike, context: OverrideContextLike) -> None:
     query = update.callback_query
     if query is None or query.data is None:
         return
     await query.answer()
-    # Any tap moves on from a custom-dish prompt, the back button included.
-    context.user_data.pop(PENDING_NOTE_KEY, None)
+    # Any tap moves on from a custom-dish prompt, the back button included. The
+    # one that answers it is the calorie button, which needs the dish it holds.
+    pending = context.user_data.pop(PENDING_NOTE_KEY, None)
 
     parts = query.data.split(":")
     action = parts[1] if len(parts) > 1 else ""
     is_next = len(parts) > 2 and parts[2] == keyboards.NEXT
     today = get_clock(context)()
+
+    if action == "nokcal" and isinstance(pending, PendingNote) and pending.note is not None:
+        await _pin_note(update, context, pending, None)
+        return
 
     plan = _stored_plan(context, is_next)
     if plan is None:
@@ -321,21 +360,36 @@ async def on_override_callback(update: CallbackUpdateLike, context: OverrideCont
     await _apply(update, context, plan, entry, is_next)
 
 
+def _parse_kcal(text: str) -> int | None:
+    try:
+        kcal = int(text.strip())
+    except ValueError:
+        return None
+    return kcal if kcal > 0 else None
+
+
 async def on_override_text(update: UpdateLike, context: OverrideContextLike, text: str) -> bool:
-    """Pin the dish typed after the custom-dish prompt. Answers whether the text
-    was that dish, so a message nobody asked for here can go to a wizard."""
+    """Pin the dish typed after the custom-dish prompt, then its calories.
+    Answers whether the text was one of those two, so a message nobody asked
+    for here can go to a wizard."""
     pending = context.user_data.get(PENDING_NOTE_KEY)
     chat = update.effective_chat
     if not isinstance(pending, PendingNote) or chat is None or chat.id != pending.chat_id:
         return False
-    del context.user_data[PENDING_NOTE_KEY]
 
-    plan = _stored_plan(context, pending.is_next)
-    if plan is None:
-        await update.reply_text(NO_PLAN_MESSAGE, reply_markup=_back_to_plan(pending.is_next))
+    if pending.note is None:
+        note = text.strip()
+        waiting = replace(pending, note=note)
+        context.user_data[PENDING_NOTE_KEY] = waiting
+        await update.reply_text(
+            render_override_kcal_prompt(note), reply_markup=_kcal_keyboard(waiting)
+        )
         return True
-    entry = PlanEntry(
-        day=pending.day, slot=pending.slot, dish_id=None, note=text.strip(), override=True
-    )
-    await _apply(update, context, plan, entry, pending.is_next)
+
+    kcal = _parse_kcal(text)
+    if kcal is None:
+        await update.reply_text(OVERRIDE_KCAL_INVALID_MESSAGE, reply_markup=_kcal_keyboard(pending))
+        return True
+
+    await _pin_note(update, context, pending, kcal)
     return True

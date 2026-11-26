@@ -495,6 +495,9 @@ def test_a_hand_picked_entry_round_trips(conn: sqlite3.Connection) -> None:
         PlanEntry(day=0, slot=Slot.LUNCH, dish_id=dish_id, override=True),
         PlanEntry(day=1, slot=Slot.LUNCH, dish_id=None, note="Fuera", override=True),
         PlanEntry(day=2, slot=Slot.LUNCH, dish_id=dish_id),
+        PlanEntry(
+            day=3, slot=Slot.LUNCH, dish_id=None, note="Pizza casera", kcal=900, override=True
+        ),
     )
     repo.save_plan(conn, Plan(week_start=week_start, entries=entries))
 
